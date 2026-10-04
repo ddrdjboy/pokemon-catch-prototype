@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>宝可梦对战捕捉</title>
+  <link rel="stylesheet" href="css/game.css?v=fs3" />
+  <script type="importmap">
+  {
+    "imports": {
+      "/js/game.js": "/js/game.js?v=regionpx",
+      "/js/data.js": "/js/data.js?v=rift2",
+      "/js/battle.js": "/js/battle.js?v=rift2",
+      "/js/catch.js": "/js/catch.js?v=rift1",
+      "/js/generated-content.js": "/js/generated-content.js?v=rift1",
+      "/js/region-content.js": "/js/region-content.js?v=rift1"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <h1>宝可梦对战捕捉</h1>
+      <div class="status">
+        <button id="btn-shop" type="button">商店</button>
+        <span id="coin-display">金币 300</span>
+        <span id="fruit-display">异次元果 0</span>
+        <span id="charm-display" class="hidden">闪耀护符</span>
+      </div>
+    </header>
+
+    <!-- Screen: map select -->
+    <section id="screen-select" class="screen">
+      <div class="panel split-pane">
+        <h2>选择地图</h2>
+        <div class="pane-scroll">
+          <div id="map-cards" class="map-cards"></div>
+          <p id="map-note" class="hint"></p>
+          <div class="row-actions">
+            <button id="btn-refresh-all" type="button">刷新所有遭遇</button>
+            <button id="btn-reset" type="button" class="danger">重新开始</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel split-pane">
+        <h2 class="party-head">我的宝可梦 <span id="party-count">1/99</span></h2>
+        <div class="pane-scroll">
+          <p class="hint">用上移、下移排序。前 6 只会标成出场，只有它们能参加对战。</p>
+          <div id="party-list" class="party-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Screen: map view -->
+    <section id="screen-map" class="screen hidden">
+      <div class="panel">
+        <button id="btn-back-select" type="button">← 返回选图</button>
+        <h2 id="map-title">地图</h2>
+        <div id="map-stage" class="map-stage">
+          <img id="map-bg" alt="地图" />
+          <div id="map-markers"></div>
+        </div>
+        <p class="hint">点击训练家或野生宝可梦开始对战。野生战胜后可捕捉；训练家要打完全队，再选一只捕捉。</p>
+      </div>
+    </section>
+
+    <!-- Screen: pick fighter -->
+    <section id="screen-pick" class="screen hidden">
+      <div class="panel">
+        <h2 id="pick-title">选择出战宝可梦</h2>
+        <p id="pick-foe-info"></p>
+        <div id="pick-party" class="party-list"></div>
+        <button id="btn-cancel-pick" type="button">取消</button>
+      </div>
+    </section>
+
+    <!-- Screen: battle -->
+    <section id="screen-battle" class="screen hidden">
+      <div class="panel battle-panel">
+        <div class="battle-field">
+          <div class="fighter foe">
+            <div class="name-row">
+              <span id="foe-name"></span>
+              <span id="foe-tags"></span>
+            </div>
+            <div id="foe-skills" class="foe-skills"></div>
+            <div class="hp-bar"><div id="foe-hp" class="hp-fill"></div></div>
+            <div id="foe-sprite-wrap" class="sprite-wrap"></div>
+          </div>
+          <div id="ally-row" class="ally-row hidden"></div>
+          <div class="fighter player">
+            <div id="player-sprite-wrap" class="sprite-wrap"></div>
+            <div class="name-row">
+              <span id="player-name"></span>
+            </div>
+            <div class="hp-bar"><div id="player-hp" class="hp-fill"></div></div>
+          </div>
+        </div>
+        <div id="battle-log" class="battle-log"></div>
+        <div class="row-actions">
+          <button id="btn-attack" type="button" class="primary">攻击</button>
+          <button id="btn-flee-battle" type="button">逃跑</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Screen: catch -->
+    <section id="screen-catch" class="screen hidden">
+      <div class="panel">
+        <div class="catch-head">
+          <h2>捕捉！</h2>
+          <span id="catch-outlook" class="catch-outlook"></span>
+        </div>
+        <div id="catch-style" class="style-toggle" role="group" aria-label="捕捉方式">
+          <button type="button" data-style="flick">甩出</button>
+          <button type="button" data-style="sling">拉弓</button>
+        </div>
+        <p id="catch-info" class="hint">按住底部的球，朝宝可梦甩出。</p>
+        <div id="ball-picker" class="ball-picker"></div>
+        <canvas id="catch-canvas" width="640" height="360"></canvas>
+        <div id="catch-result" class="catch-result"></div>
+        <button id="btn-skip-catch" type="button">放弃捕捉</button>
+      </div>
+    </section>
+  </div>
+  <div id="shop-modal" class="shop-modal hidden">
+    <div class="shop-dialog panel">
+      <h2>商店</h2>
+      <div id="shop" class="shop"></div>
+      <button id="btn-close-shop" type="button">关闭</button>
+    </div>
+  </div>
+  <div id="reset-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+    <div class="shop-dialog panel reset-dialog">
+      <h2 id="reset-title">重新开始</h2>
+      <p>进度会清空，包括宝可梦、金币和道具。确定要重新开始吗？</p>
+      <div class="row-actions">
+        <button id="btn-reset-cancel" type="button">取消</button>
+        <button id="btn-reset-confirm" type="button" class="danger">确定重新开始</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/game.js?v=fs3"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import {
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
-import { SPECIES, MAPS } from '../js/data.js';
+import { SPECIES, MAPS, listDexEntries } from '../js/data.js';
 
 let passed = 0;
 let failed = 0;
@@ -323,6 +323,14 @@ assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 100 squad falls be
 assert(fresh.bossHp < 1600, 'level 100 squad still cuts deep into the boss');
 const ready = raidToEnd(140);
 assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 140 squad beats rayquaza (${ready.rounds} rounds)`);
+
+console.log('pokedex list');
+const dex = listDexEntries(SPECIES);
+assert(dex.length === Object.keys(SPECIES).length, 'lists all species');
+assert(dex.every((e) => e.id && e.name && e.type && e.sprite), 'entries have display fields');
+const names = dex.map((e) => e.name);
+const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh'));
+assert(names.every((n, i) => n === sorted[i]), 'sorted by zh name');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

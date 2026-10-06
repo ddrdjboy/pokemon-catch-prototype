@@ -144,6 +144,18 @@ const BASE_SPECIES = {
 
 export const SPECIES = { ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES };
 
+/** Sorted pokedex rows for UI: id, name, type, sprite. */
+export function listDexEntries(species = SPECIES) {
+  return Object.values(species)
+    .map((sp) => ({
+      id: sp.id,
+      name: sp.name,
+      type: sp.type,
+      sprite: sp.sprite,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+}
+
 /** Attack type -> defender type -> multiplier (missing = 1) */
 export const TYPE_CHART = {
   fire: { grass: 1.5, ice: 1.5, bug: 1.5, steel: 1.5, water: 0.5, rock: 0.5, dragon: 0.5 },

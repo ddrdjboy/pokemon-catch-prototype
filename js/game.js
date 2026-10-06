@@ -29,7 +29,7 @@ import { catchChance, catchOutlook, catchProbability, createCatchController } fr
 import { gainExperience, xpReward, xpToNext, tryEvolve } from './level.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
-const ASSET_VER = 'v2pixel192e-regionpx';
+const ASSET_VER = 'v2pixel192e-8bit3';
 const spriteUrl = (path) => `${path}?${ASSET_VER}`;
 
 const $ = (id) => document.getElementById(id);

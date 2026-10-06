@@ -23,6 +23,7 @@ import {
   rollEncounter,
   syncEncounters,
   trimParty,
+  listDexEntries,
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
@@ -265,6 +266,32 @@ function openShop() {
 
 function closeShop() {
   $('shop-modal').classList.add('hidden');
+}
+
+function renderDex() {
+  const list = $('dex-list');
+  const entries = listDexEntries(SPECIES);
+  $('dex-title').textContent = `图鉴（${entries.length}）`;
+  list.innerHTML = '';
+  for (const e of entries) {
+    const row = document.createElement('div');
+    row.className = 'dex-row';
+    row.innerHTML = `
+      <img src="${spriteUrl(e.sprite)}" alt="${e.name}" />
+      <span class="name">${e.name}</span>
+      <span class="tag type">${typeLabel(e.type)}</span>
+    `;
+    list.appendChild(row);
+  }
+}
+
+function openDex() {
+  renderDex();
+  $('dex-modal').classList.remove('hidden');
+}
+
+function closeDex() {
+  $('dex-modal').classList.add('hidden');
 }
 
 function shopItem({ title, img, price, owned, disabled, onBuy, label, icon }) {
@@ -1025,6 +1052,11 @@ $('catch-style').addEventListener('click', (e) => {
   save();
   renderCatchStyle();
   updateCatchCopy();
+});
+$('btn-dex').addEventListener('click', openDex);
+$('btn-close-dex').addEventListener('click', closeDex);
+$('dex-modal').addEventListener('click', (e) => {
+  if (e.target === $('dex-modal')) closeDex();
 });
 $('btn-shop').addEventListener('click', openShop);
 $('btn-close-shop').addEventListener('click', closeShop);

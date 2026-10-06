@@ -24,6 +24,8 @@ import {
   syncEncounters,
   trimParty,
   listDexEntries,
+  listDexTypes,
+  getDexDetail,
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
@@ -49,6 +51,7 @@ let pendingEncounter = null;
 let battle = null;
 let catchCtrl = null;
 let selectedBallId = 'poke';
+let dexTypeFilter = null;
 let throwsThisEncounter = 0;
 let pickMode = 'lead';
 let battleBusy = false;
@@ -268,29 +271,85 @@ function closeShop() {
   $('shop-modal').classList.add('hidden');
 }
 
+function renderDexFilters() {
+  const bar = $('dex-filters');
+  bar.innerHTML = '';
+  const chips = [{ id: null, label: '全部' }, ...listDexTypes(SPECIES).map((t) => ({ id: t, label: typeLabel(t) }))];
+  for (const chip of chips) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `dex-filter${dexTypeFilter === chip.id ? ' active' : ''}`;
+    btn.textContent = chip.label;
+    btn.addEventListener('click', () => {
+      dexTypeFilter = chip.id;
+      renderDex();
+    });
+    bar.appendChild(btn);
+  }
+}
+
 function renderDex() {
+  renderDexFilters();
   const list = $('dex-list');
-  const entries = listDexEntries(SPECIES);
+  const entries = listDexEntries(SPECIES, { type: dexTypeFilter });
   $('dex-title').textContent = `图鉴（${entries.length}）`;
   list.innerHTML = '';
   for (const e of entries) {
-    const row = document.createElement('div');
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'dex-row';
     row.innerHTML = `
       <img src="${spriteUrl(e.sprite)}" alt="${e.name}" />
       <span class="name">${e.name}</span>
       <span class="tag type">${typeLabel(e.type)}</span>
     `;
+    row.addEventListener('click', () => openDexDetail(e.id));
     list.appendChild(row);
   }
 }
 
+function renderDexDetail(detail) {
+  const root = $('dex-detail');
+  const catchPct = Math.round((detail.catchRate ?? 0) * 100);
+  const moveLines = detail.moves
+    .map((m) => `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`)
+    .join('');
+  const evo = detail.evolvesToName
+    ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`
+    : '进化：无';
+  $('dex-detail-title').textContent = detail.name;
+  root.innerHTML = `
+    <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
+    <div class="meta">
+      <span class="tag type">${typeLabel(detail.type)}</span>
+      ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
+    </div>
+    <div class="stats">种族值：HP ${detail.base.hp} · 攻 ${detail.base.atk} · 防 ${detail.base.def} · 速 ${detail.base.spd}</div>
+    <div class="moves">招式：<ul>${moveLines}</ul></div>
+    <div class="extra">捕捉率：${catchPct}%<br>${evo}</div>
+  `;
+}
+
+function openDexDetail(speciesId) {
+  const detail = getDexDetail(speciesId, SPECIES);
+  if (!detail) return;
+  renderDexDetail(detail);
+  $('dex-detail-modal').classList.remove('hidden');
+}
+
+function closeDexDetail() {
+  $('dex-detail-modal').classList.add('hidden');
+}
+
 function openDex() {
+  dexTypeFilter = null;
+  closeDexDetail();
   renderDex();
   $('dex-modal').classList.remove('hidden');
 }
 
 function closeDex() {
+  closeDexDetail();
   $('dex-modal').classList.add('hidden');
 }
 
@@ -1057,6 +1116,10 @@ $('btn-dex').addEventListener('click', openDex);
 $('btn-close-dex').addEventListener('click', closeDex);
 $('dex-modal').addEventListener('click', (e) => {
   if (e.target === $('dex-modal')) closeDex();
+});
+$('btn-close-dex-detail').addEventListener('click', closeDexDetail);
+$('dex-detail-modal').addEventListener('click', (e) => {
+  if (e.target === $('dex-detail-modal')) closeDexDetail();
 });
 $('btn-shop').addEventListener('click', openShop);
 $('btn-close-shop').addEventListener('click', closeShop);

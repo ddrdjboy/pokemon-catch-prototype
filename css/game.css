@@ -26,6 +26,9 @@ body {
   font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   background: radial-gradient(ellipse at top, #2a3f55, var(--bg));
   color: var(--text);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #app {
@@ -358,14 +361,43 @@ body {
   margin: 8px 0 12px;
 }
 
+.dex-filters {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  flex-shrink: 0;
+}
+
+.dex-filter {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.dex-filter.active {
+  background: #1565c0;
+  border-color: #90caf9;
+}
+
 .dex-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #1e2a38;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dex-row:hover {
+  border-color: #90caf9;
+  background: #243447;
 }
 
 .dex-row img {
@@ -378,6 +410,45 @@ body {
 .dex-row .name {
   flex: 1;
   font-weight: 600;
+}
+
+.dex-detail-modal {
+  z-index: 40;
+}
+
+.dex-detail-dialog {
+  width: min(420px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.dex-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 12px;
+  align-items: center;
+  text-align: center;
+}
+
+.dex-detail .hero {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.dex-detail .meta,
+.dex-detail .stats,
+.dex-detail .moves,
+.dex-detail .extra {
+  width: 100%;
+  text-align: left;
+  line-height: 1.45;
+}
+
+.dex-detail .moves li {
+  margin-left: 1.2em;
 }
 
 .reset-dialog {
@@ -764,3 +835,236 @@ button.danger {
 .catch-result.ok { color: var(--ok); }
 .catch-result.fail { color: var(--danger); }
 .catch-result.soft { color: var(--muted); font-weight: 500; }
+
+/* —— Mobile portrait: playable layout —— */
+@media (max-width: 720px) {
+  #app {
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+    gap: 8px;
+  }
+
+  .top-bar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px 12px;
+  }
+
+  .top-bar h1 {
+    font-size: 1.05rem;
+    line-height: 1.2;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .status button,
+  #coin-display,
+  #fruit-display,
+  #charm-display {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+
+  #fruit-display {
+    background: #203040;
+    color: #b2ebf2;
+    border-radius: 999px;
+  }
+
+  button {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  .panel {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  #screen-select {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #screen-select .split-pane:first-child,
+  #screen-select .split-pane:last-child {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .map-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .map-card img {
+    height: 100px;
+  }
+
+  .party-list,
+  #screen-select .party-list {
+    grid-template-columns: 1fr;
+  }
+
+  .party-card .sprite-frame {
+    width: 64px;
+    height: 64px;
+  }
+
+  .party-card img {
+    width: 56px;
+    height: 56px;
+  }
+
+  .row-actions {
+    gap: 10px;
+  }
+
+  .row-actions button {
+    flex: 1 1 auto;
+  }
+
+  .map-stage {
+    max-width: none;
+  }
+
+  .marker {
+    min-width: 72px;
+    padding: 8px 6px;
+    border-width: 2px;
+  }
+
+  .marker img {
+    width: 48px;
+    height: 48px;
+  }
+
+  .marker .label {
+    font-size: 0.7rem;
+  }
+
+  .sprite-wrap {
+    min-height: 112px;
+    padding-bottom: 12px;
+  }
+
+  .sprite-wrap img {
+    width: 112px;
+    height: 112px;
+  }
+
+  .ally-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .ally-chip {
+    padding: 4px;
+    font-size: 0.68rem;
+  }
+
+  .ally-chip img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .battle-log {
+    min-height: 72px;
+    max-height: 120px;
+    font-size: 0.85rem;
+    margin: 8px 0;
+  }
+
+  .battle-panel .row-actions {
+    position: sticky;
+    bottom: 0;
+    padding-top: 4px;
+    background: linear-gradient(180deg, transparent, var(--panel) 28%);
+  }
+
+  .battle-panel .row-actions button {
+    flex: 1 1 0;
+  }
+
+  .ball-picker {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .ball-picker::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ball-option {
+    flex: 0 0 auto;
+    min-width: 76px;
+    min-height: 72px;
+    padding: 10px 8px;
+  }
+
+  .style-toggle {
+    width: 100%;
+    display: flex;
+  }
+
+  .style-toggle button {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  #catch-canvas {
+    max-width: none;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  .catch-head {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .shop {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shop-modal {
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    align-items: end;
+  }
+
+  .shop-dialog {
+    width: 100%;
+    max-height: min(88vh, 100%);
+    border-radius: 14px 14px 10px 10px;
+  }
+
+  .reset-dialog {
+    width: 100%;
+    align-self: center;
+    border-radius: 14px;
+  }
+}

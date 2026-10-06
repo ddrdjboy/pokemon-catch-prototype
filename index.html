@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=fs3" />
+  <link rel="stylesheet" href="css/game.css?v=mobile1" />
   <script type="importmap">
   {
     "imports": {
@@ -128,8 +128,16 @@
   <div id="dex-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dex-title">
     <div class="shop-dialog panel dex-dialog">
       <h2 id="dex-title">图鉴</h2>
+      <div id="dex-filters" class="dex-filters" role="group" aria-label="属性筛选"></div>
       <div id="dex-list" class="dex-list"></div>
       <button id="btn-close-dex" type="button">关闭</button>
+    </div>
+  </div>
+  <div id="dex-detail-modal" class="shop-modal dex-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dex-detail-title">
+    <div class="shop-dialog panel dex-detail-dialog">
+      <h2 id="dex-detail-title">详情</h2>
+      <div id="dex-detail" class="dex-detail"></div>
+      <button id="btn-close-dex-detail" type="button">关闭</button>
     </div>
   </div>
   <div id="shop-modal" class="shop-modal hidden">

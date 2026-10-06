@@ -692,6 +692,100 @@ button.danger {
   filter: hue-rotate(160deg) saturate(1.45) drop-shadow(0 4px 0 rgba(0, 0, 0, 0.3));
 }
 
+/* Battle FX POC */
+.sprite-wrap.fx-lunge-right img {
+  animation: fx-lunge-right 160ms ease-out;
+}
+
+.sprite-wrap.fx-lunge-left img {
+  animation: fx-lunge-left 160ms ease-out;
+}
+
+.sprite-wrap.fx-hit img {
+  animation: fx-hit 220ms steps(2, end);
+}
+
+@keyframes fx-lunge-right {
+  0% { transform: translate(0, 0); }
+  45% { transform: translate(18px, -6px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes fx-lunge-left {
+  0% { transform: translate(0, 0); }
+  45% { transform: translate(-18px, -6px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes fx-hit {
+  0%, 100% { transform: translate(0, 0); filter: brightness(1); }
+  25% { transform: translate(-5px, 0); filter: brightness(2.2); }
+  50% { transform: translate(5px, 0); filter: brightness(1.4); }
+  75% { transform: translate(-3px, 0); filter: brightness(1.8); }
+}
+
+.fx-burst {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  box-shadow: 0 0 0 0 var(--fx-tint, #fff);
+}
+
+.fx-burst.play {
+  animation: fx-burst 320ms ease-out forwards;
+}
+
+@keyframes fx-burst {
+  0% { opacity: 0.95; width: 12px; height: 12px; box-shadow: 0 0 0 0 var(--fx-tint, #fff); }
+  70% { opacity: 0.55; width: 96px; height: 96px; box-shadow: 0 0 18px 6px var(--fx-tint, #fff); }
+  100% { opacity: 0; width: 110px; height: 110px; box-shadow: 0 0 0 0 transparent; }
+}
+
+.fx-strip {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  width: 96px;
+  height: 96px;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+}
+
+.fx-strip.show {
+  opacity: 1;
+}
+
+.ally-chip.fx-chip-flash {
+  animation: fx-chip-flash 140ms ease-out;
+}
+
+@keyframes fx-chip-flash {
+  0%, 100% { filter: brightness(1); }
+  40% { filter: brightness(1.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite-wrap.fx-lunge-right img,
+  .sprite-wrap.fx-lunge-left img,
+  .sprite-wrap.fx-hit img,
+  .fx-burst.play,
+  .ally-chip.fx-chip-flash {
+    animation-duration: 1ms !important;
+  }
+}
+
 .boss-eyes {
   position: absolute;
   top: 42%;

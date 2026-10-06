@@ -37,6 +37,7 @@ export function resolveTurn(player, foe, rng = Math.random) {
         text: `${SPECIES[p.speciesId].name} 使用了 ${pMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
         damage,
         typeMult,
+        moveType: pMove.type,
         side: 'player',
       });
     } else {
@@ -46,6 +47,7 @@ export function resolveTurn(player, foe, rng = Math.random) {
         text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
         damage,
         typeMult,
+        moveType: fMove.type,
         side: 'foe',
       });
     }
@@ -89,6 +91,7 @@ export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
       text: `${who} 使用了 ${move.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
       damage,
       typeMult,
+      moveType: move.type,
       side: attacker.kind === 'player' ? 'player' : 'ally',
       allyIndex: attacker.index,
     });
@@ -145,6 +148,7 @@ function castBossMove(foe, move, squad, logs, rng) {
       text: `${SPECIES[foe.speciesId].name} 使用了 ${move.name}！${wave}${who}，造成 ${hit.damage} 点伤害${typeHint(hit.typeMult)}`,
       damage: hit.damage,
       typeMult: hit.typeMult,
+      moveType: move.type,
       side: 'foe',
       target: target.kind,
       allyIndex: target.index,

@@ -28,12 +28,21 @@ import {
   getDexDetail,
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
+import { normalizeBattleAnim, playHit } from './battle-fx.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve } from './level.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-8bit-all';
 const spriteUrl = (path) => `${path}?${ASSET_VER}`;
+
+const BATTLE_ANIM_ORDER = ['off', 'light', 'medium', 'heavy'];
+const BATTLE_ANIM_LABEL = {
+  off: '关闭',
+  light: '轻量',
+  medium: '中度',
+  heavy: '重度',
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -123,6 +132,7 @@ function hydrateState(parsed) {
   };
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
+  s.battleAnim = normalizeBattleAnim(s.battleAnim);
   if (s.balls.dusk) {
     s.balls.ultra = (s.balls.ultra || 0) + s.balls.dusk;
     delete s.balls.dusk;
@@ -169,6 +179,7 @@ function refreshHeader() {
   $('coin-display').textContent = `金币 ${state.coins}`;
   $('fruit-display').textContent = `异次元果 ${state.riftFruit || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
+  refreshBattleAnimButton();
 }
 
 function renderSelect() {
@@ -654,6 +665,33 @@ function syncBattleHp() {
   }
 }
 
+function refreshBattleAnimButton() {
+  const btn = $('btn-battle-anim');
+  if (!btn) return;
+  const mode = normalizeBattleAnim(state.battleAnim);
+  state.battleAnim = mode;
+  btn.textContent = `动画 · ${BATTLE_ANIM_LABEL[mode]}`;
+}
+
+function battleHitElements(line) {
+  const playerWrap = $('player-sprite-wrap');
+  const foeWrap = $('foe-sprite-wrap');
+  if (line.side === 'player') {
+    return { attackerEl: playerWrap, defenderEl: foeWrap };
+  }
+  if (line.side === 'ally') {
+    const chips = document.querySelectorAll('#ally-row .ally-chip');
+    const chip = chips[line.allyIndex] || null;
+    return { attackerEl: chip, defenderEl: foeWrap };
+  }
+  // foe hit
+  if (line.target === 'ally') {
+    const chips = document.querySelectorAll('#ally-row .ally-chip');
+    return { attackerEl: foeWrap, defenderEl: chips[line.allyIndex] || playerWrap };
+  }
+  return { attackerEl: foeWrap, defenderEl: playerWrap };
+}
+
 async function playTurnHits(turn, startPlayer, startFoe) {
   let playerHp = startPlayer.hp;
   let foeHp = startFoe.hp;
@@ -667,6 +705,15 @@ async function playTurnHits(turn, startPlayer, startFoe) {
     const line = turn.logs[i];
     const playerWasUp = playerHp > 0;
     appendLog(line.text);
+    const { attackerEl, defenderEl } = battleHitElements(line);
+    await playHit({
+      side: line.side,
+      moveType: line.moveType || 'normal',
+      attackerEl,
+      defenderEl,
+      damage: line.damage,
+      mode: state.battleAnim,
+    });
     if (line.side === 'player' || line.side === 'ally') {
       foeHp = Math.max(0, foeHp - line.damage);
       battle.foe = { ...battle.foe, hp: foeHp };
@@ -1122,6 +1169,13 @@ $('dex-detail-modal').addEventListener('click', (e) => {
   if (e.target === $('dex-detail-modal')) closeDexDetail();
 });
 $('btn-shop').addEventListener('click', openShop);
+$('btn-battle-anim').addEventListener('click', () => {
+  const cur = normalizeBattleAnim(state.battleAnim);
+  const idx = BATTLE_ANIM_ORDER.indexOf(cur);
+  state.battleAnim = BATTLE_ANIM_ORDER[(idx + 1) % BATTLE_ANIM_ORDER.length];
+  save();
+  refreshBattleAnimButton();
+});
 $('btn-close-shop').addEventListener('click', closeShop);
 $('shop-modal').addEventListener('click', (e) => {
   if (e.target === $('shop-modal')) closeShop();

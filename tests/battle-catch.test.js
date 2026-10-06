@@ -1,4 +1,12 @@
 import { calcDamage, nextBattleStep, resolveSquadTurn, whoGoesFirstDeterministic } from '../js/battle.js';
+import {
+  normalizeBattleAnim,
+  effectiveBattleAnim,
+  typeTint,
+  playHit,
+  loadHeavyFrames,
+  clearHeavyFrameCache,
+} from '../js/battle-fx.js';
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
@@ -342,6 +350,49 @@ assert(detail?.name === '小火龙' && detail.type === 'fire', 'detail name and 
 assert(detail.base.hp > 0 && detail.moves.length >= 1, 'detail has base and moves');
 assert(detail.evolvesToName && detail.evolveLevel != null, 'detail has evolution');
 assert(getDexDetail('nope', SPECIES) === null, 'missing species is null');
+
+console.log('battle fx');
+assert(normalizeBattleAnim('heavy') === 'heavy', 'normalize keeps heavy');
+assert(normalizeBattleAnim('nope') === 'light', 'normalize unknown → light');
+assert(normalizeBattleAnim(undefined) === 'light', 'normalize undefined → light');
+assert(effectiveBattleAnim('heavy', { reducedMotion: true }) === 'light', 'reduced motion clamps heavy');
+assert(typeTint('fire') === '#ff6a2a', 'fire tint');
+assert(typeTint('unknown') === typeTint('normal'), 'unknown tint → normal');
+
+const offResult = await playHit({
+  side: 'player',
+  moveType: 'fire',
+  attackerEl: null,
+  defenderEl: null,
+  mode: 'off',
+  reducedMotion: false,
+});
+assert(offResult.played === 'off', 'off mode resolves as off');
+
+clearHeavyFrameCache();
+const missing = await loadHeavyFrames('fire', {
+  loader: async () => { throw new Error('missing'); },
+});
+assert(missing === null, 'heavy frames missing → null');
+const fallback = await playHit({
+  side: 'player',
+  moveType: 'fire',
+  attackerEl: null,
+  defenderEl: null,
+  mode: 'heavy',
+  reducedMotion: false,
+});
+assert(fallback.played === 'medium-fallback', 'heavy without frames falls back to medium');
+
+const grassHeavy = await playHit({
+  side: 'player',
+  moveType: 'grass',
+  attackerEl: null,
+  defenderEl: null,
+  mode: 'heavy',
+  reducedMotion: false,
+});
+assert(grassHeavy.played === 'medium-fallback', 'heavy non fire/water/electric uses medium path');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

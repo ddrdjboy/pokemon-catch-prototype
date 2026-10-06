@@ -656,6 +656,7 @@ export function initialPlayerState() {
     riftFruit: 0,
     hasShinyCharm: false,
     catchStyle: 'flick',
+    battleAnim: 'light',
     balls: { poke: 5, great: 0, ultra: 0, quick: 0, master: 0 },
     party: [createPokemon('scorbunny', 5)],
     cleared: {},

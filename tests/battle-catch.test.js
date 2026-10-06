@@ -8,7 +8,7 @@ import {
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
-import { SPECIES, MAPS, listDexEntries } from '../js/data.js';
+import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
 
 let passed = 0;
 let failed = 0;
@@ -331,6 +331,17 @@ assert(dex.every((e) => e.id && e.name && e.type && e.sprite), 'entries have dis
 const names = dex.map((e) => e.name);
 const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh'));
 assert(names.every((n, i) => n === sorted[i]), 'sorted by zh name');
+const fireDex = listDexEntries(SPECIES, { type: 'fire' });
+assert(fireDex.length > 0 && fireDex.every((e) => e.type === 'fire'), 'filters by type');
+assert(fireDex.length < dex.length, 'type filter shrinks the list');
+const types = listDexTypes(SPECIES);
+assert(types.includes('fire') && types.includes('water'), 'lists known types');
+assert(types.every((t, i) => i === 0 || types[i - 1] <= t), 'types sorted');
+const detail = getDexDetail('charmander', SPECIES);
+assert(detail?.name === '小火龙' && detail.type === 'fire', 'detail name and type');
+assert(detail.base.hp > 0 && detail.moves.length >= 1, 'detail has base and moves');
+assert(detail.evolvesToName && detail.evolveLevel != null, 'detail has evolution');
+assert(getDexDetail('nope', SPECIES) === null, 'missing species is null');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

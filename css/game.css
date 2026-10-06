@@ -361,14 +361,43 @@ body {
   margin: 8px 0 12px;
 }
 
+.dex-filters {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  flex-shrink: 0;
+}
+
+.dex-filter {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.dex-filter.active {
+  background: #1565c0;
+  border-color: #90caf9;
+}
+
 .dex-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #1e2a38;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dex-row:hover {
+  border-color: #90caf9;
+  background: #243447;
 }
 
 .dex-row img {
@@ -381,6 +410,45 @@ body {
 .dex-row .name {
   flex: 1;
   font-weight: 600;
+}
+
+.dex-detail-modal {
+  z-index: 40;
+}
+
+.dex-detail-dialog {
+  width: min(420px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.dex-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 12px;
+  align-items: center;
+  text-align: center;
+}
+
+.dex-detail .hero {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.dex-detail .meta,
+.dex-detail .stats,
+.dex-detail .moves,
+.dex-detail .extra {
+  width: 100%;
+  text-align: left;
+  line-height: 1.45;
+}
+
+.dex-detail .moves li {
+  margin-left: 1.2em;
 }
 
 .reset-dialog {

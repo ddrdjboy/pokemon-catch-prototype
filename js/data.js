@@ -144,9 +144,15 @@ const BASE_SPECIES = {
 
 export const SPECIES = { ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES };
 
-/** Sorted pokedex rows for UI: id, name, type, sprite. */
-export function listDexEntries(species = SPECIES) {
+/** Distinct type ids present in the dex, sorted alphabetically. */
+export function listDexTypes(species = SPECIES) {
+  return [...new Set(Object.values(species).map((sp) => sp.type))].sort();
+}
+
+/** Sorted pokedex rows for UI: id, name, type, sprite. Optional type filter. */
+export function listDexEntries(species = SPECIES, { type = null } = {}) {
   return Object.values(species)
+    .filter((sp) => !type || sp.type === type)
     .map((sp) => ({
       id: sp.id,
       name: sp.name,
@@ -154,6 +160,26 @@ export function listDexEntries(species = SPECIES) {
       sprite: sp.sprite,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+}
+
+/** Detail projection for a species; null if missing. */
+export function getDexDetail(speciesId, species = SPECIES) {
+  const sp = species[speciesId];
+  if (!sp) return null;
+  const evolvesTo = sp.evolvesTo ? species[sp.evolvesTo] : null;
+  const moves = sp.moves?.length ? sp.moves : (sp.move ? [sp.move] : []);
+  return {
+    id: sp.id,
+    name: sp.name,
+    type: sp.type,
+    sprite: sp.sprite,
+    base: { hp: sp.base.hp, atk: sp.base.atk, def: sp.base.def, spd: sp.base.spd },
+    catchRate: sp.catchRate,
+    mega: !!sp.mega,
+    moves: moves.map((m) => ({ name: m.name, power: m.power, type: m.type })),
+    evolveLevel: sp.evolveLevel ?? null,
+    evolvesToName: evolvesTo?.name ?? null,
+  };
 }
 
 /** Attack type -> defender type -> multiplier (missing = 1) */

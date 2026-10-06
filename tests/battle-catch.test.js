@@ -4,8 +4,9 @@ import {
   effectiveBattleAnim,
   typeTint,
   playHit,
-  loadHeavyFrames,
-  clearHeavyFrameCache,
+  hasFighterFrames,
+  loadFighterFrames,
+  clearFighterFrameCache,
 } from '../js/battle-fx.js';
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
@@ -369,30 +370,34 @@ const offResult = await playHit({
 });
 assert(offResult.played === 'off', 'off mode resolves as off');
 
-clearHeavyFrameCache();
-const missing = await loadHeavyFrames('fire', {
+assert(hasFighterFrames('charmander') && hasFighterFrames('scorbunny'), 'POC fighters registered');
+assert(!hasFighterFrames('pikachu'), 'pikachu not in fighter POC');
+clearFighterFrameCache();
+const missing = await loadFighterFrames('charmander', {
   loader: async () => { throw new Error('missing'); },
 });
-assert(missing === null, 'heavy frames missing → null');
+assert(missing === null, 'fighter frames missing → null');
 const fallback = await playHit({
   side: 'player',
+  attackerSpeciesId: 'charmander',
   moveType: 'fire',
   attackerEl: null,
   defenderEl: null,
   mode: 'heavy',
   reducedMotion: false,
 });
-assert(fallback.played === 'medium-fallback', 'heavy without frames falls back to medium');
+assert(fallback.played === 'medium-fallback', 'heavy without sprite el falls back to medium');
 
-const grassHeavy = await playHit({
+const otherHeavy = await playHit({
   side: 'player',
-  moveType: 'grass',
+  attackerSpeciesId: 'pikachu',
+  moveType: 'electric',
   attackerEl: null,
   defenderEl: null,
   mode: 'heavy',
   reducedMotion: false,
 });
-assert(grassHeavy.played === 'medium-fallback', 'heavy non fire/water/electric uses medium path');
+assert(otherHeavy.played === 'medium-fallback', 'heavy non-POC species uses medium path');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

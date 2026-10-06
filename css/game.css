@@ -693,6 +693,10 @@ button.danger {
 }
 
 /* Battle FX POC */
+.sprite-wrap.fx-face-right img:not(.fx-strip) {
+  transform: scaleX(-1);
+}
+
 .sprite-wrap.fx-lunge-right img {
   animation: fx-lunge-right 160ms ease-out;
 }

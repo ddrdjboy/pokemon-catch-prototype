@@ -677,19 +677,35 @@ function battleHitElements(line) {
   const playerWrap = $('player-sprite-wrap');
   const foeWrap = $('foe-sprite-wrap');
   if (line.side === 'player') {
-    return { attackerEl: playerWrap, defenderEl: foeWrap };
+    return {
+      attackerEl: playerWrap,
+      defenderEl: foeWrap,
+      attackerSpeciesId: battle?.player?.speciesId,
+    };
   }
   if (line.side === 'ally') {
     const chips = document.querySelectorAll('#ally-row .ally-chip');
     const chip = chips[line.allyIndex] || null;
-    return { attackerEl: chip, defenderEl: foeWrap };
+    return {
+      attackerEl: chip,
+      defenderEl: foeWrap,
+      attackerSpeciesId: battle?.allies?.[line.allyIndex]?.speciesId,
+    };
   }
   // foe hit
   if (line.target === 'ally') {
     const chips = document.querySelectorAll('#ally-row .ally-chip');
-    return { attackerEl: foeWrap, defenderEl: chips[line.allyIndex] || playerWrap };
+    return {
+      attackerEl: foeWrap,
+      defenderEl: chips[line.allyIndex] || playerWrap,
+      attackerSpeciesId: battle?.foe?.speciesId,
+    };
   }
-  return { attackerEl: foeWrap, defenderEl: playerWrap };
+  return {
+    attackerEl: foeWrap,
+    defenderEl: playerWrap,
+    attackerSpeciesId: battle?.foe?.speciesId,
+  };
 }
 
 async function playTurnHits(turn, startPlayer, startFoe) {
@@ -705,9 +721,10 @@ async function playTurnHits(turn, startPlayer, startFoe) {
     const line = turn.logs[i];
     const playerWasUp = playerHp > 0;
     appendLog(line.text);
-    const { attackerEl, defenderEl } = battleHitElements(line);
+    const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
     await playHit({
       side: line.side,
+      attackerSpeciesId,
       moveType: line.moveType || 'normal',
       attackerEl,
       defenderEl,

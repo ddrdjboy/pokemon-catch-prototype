@@ -71,18 +71,17 @@ await battleFx.playHit({
 
 ### Heavy (`heavy`)
 
-- Includes medium.
-- If `moveType` is `fire` | `water` | `electric`: play 4–6 frame sprite sequence between attacker/defender (~300–500ms), then hit react.
-- Other types: fall back to medium.
-- Missing/failed frame load: fall back to medium (no throw).
-
-Squad allies: full FX on main battlefield sprites; ally chips get a brief flash only.
+- Prefer **species fight-frame strips** on the attacker’s main sprite (not only type VFX).
+- POC species: `charmander`, `scorbunny` — 5 frames under `assets/fx/fighters/<id>/frame_0..4.png`.
+- Play frames on attacker → defender hit flash + type burst.
+- Player/ally side flips frames horizontally so the strike reads toward the foe.
+- Other species or missing frames: fall back to medium.
+- Ally chips: flash only (no body strip on chips).
 
 ## Assets (heavy POC)
 
-- Paths: `assets/fx/fire/`, `assets/fx/water/`, `assets/fx/electric/`.
-- Prefer 8-bit style, magenta-keyed transparent PNGs (game-pixel-art / pixel_export), sized for overlay (e.g. 96×96 or 128×128 frames).
-- Exactly one short strip per type for POC (not per species).
+- Fighter strips: `assets/fx/fighters/charmander/`, `assets/fx/fighters/scorbunny/` (192×192, magenta-keyed).
+- Legacy type bursts under `assets/fx/{fire,water,electric}/` remain optional medium/heavy accent only.
 
 ## Data flow
 

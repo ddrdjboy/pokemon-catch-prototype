@@ -1,6 +1,9 @@
 /**
  * Battle presentation FX (POC). Combat math stays in battle.js.
  * Modes: off | light | medium | heavy
+ *
+ * Heavy POC: species fight-frame strips for charmander & scorbunny
+ * (assets/fx/fighters/<id>/frame_*.png). Others fall back to medium.
  */
 
 const MODES = new Set(['off', 'light', 'medium', 'heavy']);
@@ -26,11 +29,12 @@ const TYPE_TINT = {
   normal: '#e8e0d0',
 };
 
-const HEAVY_TYPES = new Set(['fire', 'water', 'electric']);
-const FRAME_COUNT = 5;
-const FRAME_MS = 70;
+/** Species with dedicated attack frame strips (heavy POC). */
+export const FIGHTER_FRAME_SPECIES = new Set(['charmander', 'scorbunny']);
+const FIGHTER_FRAME_COUNT = 5;
+const FIGHTER_FRAME_MS = 90;
 
-const frameCache = new Map(); // type -> HTMLImageElement[] | null (null = failed)
+const fighterCache = new Map(); // speciesId -> HTMLImageElement[] | null
 
 export function normalizeBattleAnim(value) {
   if (MODES.has(value)) return value;
@@ -44,7 +48,6 @@ export function typeTint(type) {
 export function effectiveBattleAnim(mode, { reducedMotion = false } = {}) {
   const m = normalizeBattleAnim(mode);
   if (reducedMotion && (m === 'medium' || m === 'heavy')) return 'light';
-  if (reducedMotion && m === 'light') return 'light';
   return m;
 }
 
@@ -63,7 +66,6 @@ function prefersReducedMotion() {
 function bumpClass(el, className, ms) {
   if (!el) return wait(ms);
   el.classList.remove(className);
-  // force reflow
   void el.offsetWidth;
   el.classList.add(className);
   return wait(ms).then(() => {
@@ -92,67 +94,79 @@ function playBurst(defenderEl, type, ms = 320) {
   return wait(ms).then(() => layer.classList.remove('play'));
 }
 
-function frameUrls(type) {
+function fighterFrameUrls(speciesId) {
   const urls = [];
-  for (let i = 0; i < FRAME_COUNT; i += 1) {
-    urls.push(`assets/fx/${type}/frame_${i}.png`);
+  for (let i = 0; i < FIGHTER_FRAME_COUNT; i += 1) {
+    urls.push(`assets/fx/fighters/${speciesId}/frame_${i}.png`);
   }
   return urls;
 }
 
-export async function loadHeavyFrames(type, { loader } = {}) {
-  if (!HEAVY_TYPES.has(type)) return null;
-  if (frameCache.has(type)) return frameCache.get(type);
+export function hasFighterFrames(speciesId) {
+  return FIGHTER_FRAME_SPECIES.has(speciesId);
+}
+
+export async function loadFighterFrames(speciesId, { loader } = {}) {
+  if (!FIGHTER_FRAME_SPECIES.has(speciesId)) return null;
+  if (fighterCache.has(speciesId)) return fighterCache.get(speciesId);
 
   const loadOne = loader || ((url) => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`fx frame missing: ${url}`));
-    img.src = url;
+    img.onerror = () => reject(new Error(`fighter frame missing: ${url}`));
+    img.src = `${url}?v=fighter1`;
   }));
 
   try {
     const imgs = [];
-    for (const url of frameUrls(type)) {
+    for (const url of fighterFrameUrls(speciesId)) {
       imgs.push(await loadOne(url));
     }
-    frameCache.set(type, imgs);
+    fighterCache.set(speciesId, imgs);
     return imgs;
   } catch {
-    frameCache.set(type, null);
+    fighterCache.set(speciesId, null);
     return null;
   }
 }
 
-/** Test helper: clear cached frame loads. */
-export function clearHeavyFrameCache() {
-  frameCache.clear();
+/** Test helper */
+export function clearFighterFrameCache() {
+  fighterCache.clear();
 }
 
-function ensureStrip(defenderEl) {
-  if (!defenderEl) return null;
-  let strip = defenderEl.querySelector('.fx-strip');
-  if (!strip) {
-    strip = document.createElement('img');
-    strip.className = 'fx-strip';
-    strip.alt = '';
-    defenderEl.appendChild(strip);
-  }
-  return strip;
+function mainSpriteImg(wrapEl) {
+  if (!wrapEl) return null;
+  return wrapEl.querySelector('img:not(.fx-strip)') || null;
 }
 
-async function playHeavyStrip(defenderEl, type) {
-  const frames = await loadHeavyFrames(type);
+/**
+ * Swap the attacker's main sprite through fight frames, then restore.
+ * Player side flips horizontally so punches/kicks read toward the foe.
+ */
+export async function playFighterAttack(attackerEl, speciesId, { side = 'player' } = {}) {
+  const frames = await loadFighterFrames(speciesId);
   if (!frames?.length) return false;
-  const strip = ensureStrip(defenderEl);
-  if (!strip) return false;
-  strip.classList.add('show');
-  for (const img of frames) {
-    strip.src = img.src;
-    await wait(FRAME_MS);
+  const img = mainSpriteImg(attackerEl);
+  if (!img) return false;
+
+  const prevSrc = img.getAttribute('src') || img.src;
+  const prevIdle = img.style.animation;
+  img.style.animation = 'none';
+  if (side === 'player' || side === 'ally') {
+    attackerEl.classList.add('fx-face-right');
   }
-  strip.classList.remove('show');
-  strip.removeAttribute('src');
+
+  try {
+    for (const frame of frames) {
+      img.src = frame.src;
+      await wait(FIGHTER_FRAME_MS);
+    }
+  } finally {
+    img.src = prevSrc;
+    img.style.animation = prevIdle;
+    attackerEl.classList.remove('fx-face-right');
+  }
   return true;
 }
 
@@ -166,7 +180,8 @@ async function playLight(attackerEl, defenderEl, side) {
 
 /**
  * @param {object} opts
- * @param {'player'|'foe'|'ally'} opts.side who dealt the hit
+ * @param {'player'|'foe'|'ally'} opts.side
+ * @param {string} [opts.attackerSpeciesId]
  * @param {string} opts.moveType
  * @param {Element|null} opts.attackerEl
  * @param {Element|null} opts.defenderEl
@@ -175,6 +190,7 @@ async function playLight(attackerEl, defenderEl, side) {
  */
 export async function playHit({
   side,
+  attackerSpeciesId,
   moveType,
   attackerEl,
   defenderEl,
@@ -184,34 +200,39 @@ export async function playHit({
   const m = effectiveBattleAnim(mode, { reducedMotion });
   if (m === 'off') return { played: 'off' };
 
-  // Ally chips: flash chip, then hit/VFX on the battlefield target (no lunge).
+  // Ally chips: flash only (no full body frames on chips).
   if (side === 'ally' && attackerEl?.classList?.contains('ally-chip')) {
     await bumpClass(attackerEl, 'fx-chip-flash', 140);
     await bumpClass(defenderEl, 'fx-hit', 180);
     if (m === 'light') return { played: 'light-ally' };
-    if (m === 'heavy' && HEAVY_TYPES.has(moveType)) {
-      const ok = await playHeavyStrip(defenderEl, moveType);
-      if (ok) {
-        await playBurst(defenderEl, moveType, 200);
-        return { played: 'heavy-ally' };
-      }
-    }
     await playBurst(defenderEl, moveType);
-    return { played: m === 'heavy' ? 'medium-fallback-ally' : 'medium-ally' };
+    return { played: 'medium-ally' };
+  }
+
+  if (m === 'heavy' && hasFighterFrames(attackerSpeciesId)) {
+    const fought = await playFighterAttack(attackerEl, attackerSpeciesId, { side });
+    if (fought) {
+      await Promise.all([
+        bumpClass(defenderEl, 'fx-hit', 220),
+        playBurst(defenderEl, moveType, 280),
+      ]);
+      return { played: 'heavy-fighter' };
+    }
   }
 
   await playLight(attackerEl, defenderEl, side);
-
   if (m === 'light') return { played: 'light' };
 
-  if (m === 'heavy' && HEAVY_TYPES.has(moveType)) {
-    const ok = await playHeavyStrip(defenderEl, moveType);
-    if (ok) {
-      await playBurst(defenderEl, moveType, 200);
-      return { played: 'heavy' };
-    }
-  }
-
   await playBurst(defenderEl, moveType);
+  // heavy without fighter frames → medium path
   return { played: m === 'heavy' ? 'medium-fallback' : 'medium' };
+}
+
+// --- legacy aliases for older tests (type VFX strips removed from heavy) ---
+export async function loadHeavyFrames() {
+  return null;
+}
+
+export function clearHeavyFrameCache() {
+  clearFighterFrameCache();
 }

@@ -7,6 +7,7 @@ import {
   hasFighterFrames,
   loadFighterFrames,
   clearFighterFrameCache,
+  playFighterFrameStrip,
 } from '../js/battle-fx.js';
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
@@ -398,6 +399,26 @@ const otherHeavy = await playHit({
   reducedMotion: false,
 });
 assert(otherHeavy.played === 'medium-fallback', 'heavy missing species uses medium path');
+
+console.log('pokedex anim preview');
+clearFighterFrameCache();
+const fakeFrames = [0, 1, 2, 3, 4].map((i) => ({ src: `fake-frame-${i}.png` }));
+let loadIdx = 0;
+await loadFighterFrames('scorbunny', {
+  loader: async () => fakeFrames[loadIdx++],
+});
+const previewImg = { src: 'static.png', style: { animation: 'idle-bob 1s' }, getAttribute: () => 'static.png' };
+const seen = [];
+Object.defineProperty(previewImg, 'src', {
+  get() { return this._src; },
+  set(v) { this._src = v; seen.push(v); },
+  configurable: true,
+});
+previewImg._src = 'static.png';
+const played = await playFighterFrameStrip(previewImg, 'scorbunny', { frameMs: 0 });
+assert(played === true, 'preview strip plays');
+assert(seen.filter((s) => String(s).includes('fake-frame')).length === 5, 'visits all five frames');
+assert(previewImg.src === 'static.png', 'restores static sprite');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

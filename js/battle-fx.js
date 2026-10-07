@@ -102,9 +102,14 @@ function fighterFrameUrls(speciesId) {
   return urls;
 }
 
-/** True once frames have been successfully loaded into cache. */
+/**
+ * Whether fight frames are available for this species.
+ * Unknown ids are optimistic (files exist for the full fighter queue);
+ * after a failed load the cache stores null and this returns false.
+ */
 export function hasFighterFrames(speciesId) {
   if (!speciesId) return false;
+  if (!fighterCache.has(speciesId)) return true;
   const cached = fighterCache.get(speciesId);
   return Array.isArray(cached) && cached.length === FIGHTER_FRAME_COUNT;
 }
@@ -142,30 +147,45 @@ function mainSpriteImg(wrapEl) {
   return wrapEl.querySelector('img:not(.fx-strip)') || null;
 }
 
-export async function playFighterAttack(attackerEl, speciesId, { side = 'player' } = {}) {
+/**
+ * Swap an <img> through fight frames once, then restore the previous src.
+ * Used by battle heavy mode and pokedex detail preview.
+ */
+export async function playFighterFrameStrip(img, speciesId, { frameMs = FIGHTER_FRAME_MS } = {}) {
   const frames = await loadFighterFrames(speciesId);
-  if (!frames?.length) return false;
-  const img = mainSpriteImg(attackerEl);
-  if (!img) return false;
+  if (!frames?.length || !img) return false;
 
   const prevSrc = img.getAttribute('src') || img.src;
   const prevIdle = img.style.animation;
   img.style.animation = 'none';
-  if (side === 'player' || side === 'ally') {
-    attackerEl.classList.add('fx-face-right');
-  }
 
   try {
     for (const frame of frames) {
       img.src = frame.src;
-      await wait(FIGHTER_FRAME_MS);
+      await wait(frameMs);
     }
   } finally {
     img.src = prevSrc;
     img.style.animation = prevIdle;
-    attackerEl.classList.remove('fx-face-right');
   }
   return true;
+}
+
+/**
+ * Swap the attacker's main sprite through fight frames, then restore.
+ * Player side flips horizontally so punches/kicks read toward the foe.
+ */
+export async function playFighterAttack(attackerEl, speciesId, { side = 'player' } = {}) {
+  const img = mainSpriteImg(attackerEl);
+  if (!img) return false;
+  if (side === 'player' || side === 'ally') {
+    attackerEl.classList.add('fx-face-right');
+  }
+  try {
+    return await playFighterFrameStrip(img, speciesId);
+  } finally {
+    attackerEl.classList.remove('fx-face-right');
+  }
 }
 
 async function playLight(attackerEl, defenderEl, side) {

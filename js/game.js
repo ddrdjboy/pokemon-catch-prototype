@@ -28,7 +28,7 @@ import {
   getDexDetail,
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
-import { normalizeBattleAnim, playHit } from './battle-fx.js';
+import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve } from './level.js';
 
@@ -328,9 +328,13 @@ function renderDexDetail(detail) {
   const evo = detail.evolvesToName
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`
     : '进化：无';
+  const canAnim = hasFighterFrames(detail.id);
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
-    <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
+    <div class="dex-hero-wrap">
+      <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
+    </div>
+    ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
     <div class="meta">
       <span class="tag type">${typeLabel(detail.type)}</span>
       ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
@@ -339,6 +343,19 @@ function renderDexDetail(detail) {
     <div class="moves">招式：<ul>${moveLines}</ul></div>
     <div class="extra">捕捉率：${catchPct}%<br>${evo}</div>
   `;
+  const animBtn = $('btn-dex-anim');
+  if (animBtn) {
+    animBtn.addEventListener('click', async () => {
+      if (animBtn.disabled) return;
+      animBtn.disabled = true;
+      const img = root.querySelector('img.hero');
+      try {
+        await playFighterFrameStrip(img, detail.id);
+      } finally {
+        animBtn.disabled = false;
+      }
+    });
+  }
 }
 
 function openDexDetail(speciesId) {

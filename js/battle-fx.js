@@ -2,8 +2,9 @@
  * Battle presentation FX (POC). Combat math stays in battle.js.
  * Modes: off | light | medium | heavy
  *
- * Heavy POC: species fight-frame strips for charmander & scorbunny
- * (assets/fx/fighters/<id>/frame_*.png). Others fall back to medium.
+ * Heavy: play species fight-frame strips from
+ * `assets/fx/fighters/<speciesId>/frame_0..4.png` when present;
+ * otherwise fall back to medium.
  */
 
 const MODES = new Set(['off', 'light', 'medium', 'heavy']);
@@ -29,10 +30,9 @@ const TYPE_TINT = {
   normal: '#e8e0d0',
 };
 
-/** Species with dedicated attack frame strips (heavy POC). */
-export const FIGHTER_FRAME_SPECIES = new Set(['charmander', 'scorbunny']);
 const FIGHTER_FRAME_COUNT = 5;
 const FIGHTER_FRAME_MS = 90;
+const FIGHTER_ASSET_VER = 'fighter2';
 
 const fighterCache = new Map(); // speciesId -> HTMLImageElement[] | null
 
@@ -102,19 +102,22 @@ function fighterFrameUrls(speciesId) {
   return urls;
 }
 
+/** True once frames have been successfully loaded into cache. */
 export function hasFighterFrames(speciesId) {
-  return FIGHTER_FRAME_SPECIES.has(speciesId);
+  if (!speciesId) return false;
+  const cached = fighterCache.get(speciesId);
+  return Array.isArray(cached) && cached.length === FIGHTER_FRAME_COUNT;
 }
 
 export async function loadFighterFrames(speciesId, { loader } = {}) {
-  if (!FIGHTER_FRAME_SPECIES.has(speciesId)) return null;
+  if (!speciesId) return null;
   if (fighterCache.has(speciesId)) return fighterCache.get(speciesId);
 
   const loadOne = loader || ((url) => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`fighter frame missing: ${url}`));
-    img.src = `${url}?v=fighter1`;
+    img.src = `${url}?v=${FIGHTER_ASSET_VER}`;
   }));
 
   try {
@@ -130,7 +133,6 @@ export async function loadFighterFrames(speciesId, { loader } = {}) {
   }
 }
 
-/** Test helper */
 export function clearFighterFrameCache() {
   fighterCache.clear();
 }
@@ -140,10 +142,6 @@ function mainSpriteImg(wrapEl) {
   return wrapEl.querySelector('img:not(.fx-strip)') || null;
 }
 
-/**
- * Swap the attacker's main sprite through fight frames, then restore.
- * Player side flips horizontally so punches/kicks read toward the foe.
- */
 export async function playFighterAttack(attackerEl, speciesId, { side = 'player' } = {}) {
   const frames = await loadFighterFrames(speciesId);
   if (!frames?.length) return false;
@@ -178,16 +176,6 @@ async function playLight(attackerEl, defenderEl, side) {
   ]);
 }
 
-/**
- * @param {object} opts
- * @param {'player'|'foe'|'ally'} opts.side
- * @param {string} [opts.attackerSpeciesId]
- * @param {string} opts.moveType
- * @param {Element|null} opts.attackerEl
- * @param {Element|null} opts.defenderEl
- * @param {string} [opts.mode]
- * @param {boolean} [opts.reducedMotion]
- */
 export async function playHit({
   side,
   attackerSpeciesId,
@@ -200,7 +188,6 @@ export async function playHit({
   const m = effectiveBattleAnim(mode, { reducedMotion });
   if (m === 'off') return { played: 'off' };
 
-  // Ally chips: flash only (no full body frames on chips).
   if (side === 'ally' && attackerEl?.classList?.contains('ally-chip')) {
     await bumpClass(attackerEl, 'fx-chip-flash', 140);
     await bumpClass(defenderEl, 'fx-hit', 180);
@@ -209,7 +196,7 @@ export async function playHit({
     return { played: 'medium-ally' };
   }
 
-  if (m === 'heavy' && hasFighterFrames(attackerSpeciesId)) {
+  if (m === 'heavy' && attackerSpeciesId) {
     const fought = await playFighterAttack(attackerEl, attackerSpeciesId, { side });
     if (fought) {
       await Promise.all([
@@ -224,11 +211,9 @@ export async function playHit({
   if (m === 'light') return { played: 'light' };
 
   await playBurst(defenderEl, moveType);
-  // heavy without fighter frames → medium path
   return { played: m === 'heavy' ? 'medium-fallback' : 'medium' };
 }
 
-// --- legacy aliases for older tests (type VFX strips removed from heavy) ---
 export async function loadHeavyFrames() {
   return null;
 }

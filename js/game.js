@@ -23,6 +23,10 @@ import {
   rollEncounter,
   syncEncounters,
   trimParty,
+  PARTY_STYLES,
+  moveWithinZone,
+  recallToBag,
+  sendToActive,
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
@@ -119,6 +123,7 @@ function hydrateState(parsed) {
   };
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
+  if (!PARTY_STYLES.includes(s.partyStyle)) s.partyStyle = 'capsule';
   if (s.balls.dusk) {
     s.balls.ultra = (s.balls.ultra || 0) + s.balls.dusk;
     delete s.balls.dusk;

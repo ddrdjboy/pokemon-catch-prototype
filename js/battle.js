@@ -123,6 +123,68 @@ export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
 }
 
 /**
+ * Player used an item this turn: only the foe attacks.
+ */
+export function resolveFoeOnlyTurn(player, foe) {
+  const logs = [];
+  const p = { ...player };
+  const f = { ...foe };
+  if (p.hp > 0 && f.hp > 0) {
+    const fMove = SPECIES[f.speciesId].move;
+    const { damage, typeMult } = calcDamage(f, p, fMove);
+    p.hp = Math.max(0, p.hp - damage);
+    logs.push({
+      text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
+      damage,
+      typeMult,
+      moveType: fMove.type,
+      side: 'foe',
+    });
+  }
+
+  let result = 'ongoing';
+  if (f.hp <= 0 && p.hp <= 0) result = 'draw';
+  else if (f.hp <= 0) result = 'win';
+  else if (p.hp <= 0) result = 'lose';
+
+  return { player: p, foe: f, logs, result };
+}
+
+/**
+ * Item turn in a squad raid: player/allies skip attacking; boss still uses its kit.
+ */
+export function resolveSquadItemTurn(player, allies, foe, rng = Math.random) {
+  const p = { ...player };
+  const team = allies.map((ally) => ({ ...ally }));
+  const f = { ...foe };
+  const logs = [];
+
+  const living = () => [
+    { kind: 'player', mon: p },
+    ...team.map((mon, index) => ({ kind: 'ally', mon, index })),
+  ].filter((a) => a.mon.hp > 0);
+
+  if (f.hp > 0 && living().length) {
+    const kit = speciesMoves(f.speciesId);
+    const heavies = kit.filter((move) => !move.aoe);
+    const waves = kit.filter((move) => move.aoe);
+    const heavy = heavies[Math.min(heavies.length - 1, Math.floor(rng() * heavies.length))] || kit[0];
+    castBossMove(f, heavy, living(), logs, rng);
+    if (living().length) {
+      for (const wave of waves) castBossMove(f, wave, living(), logs, rng);
+    }
+  }
+
+  const alliesUp = team.some((ally) => ally.hp > 0);
+  let result = 'ongoing';
+  if (f.hp <= 0) result = 'win';
+  else if (p.hp <= 0 && alliesUp) result = 'switch';
+  else if (p.hp <= 0) result = 'lose';
+
+  return { player: p, allies: team, foe: f, logs, result };
+}
+
+/**
  * What happens after a turn once someone may have fainted.
  * foeRemaining: trainer Pokémon not yet sent. playerBackup: conscious party
  * members other than the one that just fainted.

@@ -6,6 +6,9 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
+  HEAL_ITEMS,
+  emptyHealItems,
+  applyHealItem,
   createPokemon,
   createRiftAllies,
   initialPlayerState,
@@ -27,7 +30,13 @@ import {
   listDexTypes,
   getDexDetail,
 } from './data.js';
-import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
+import {
+  nextBattleStep,
+  resolveSquadTurn,
+  resolveSquadItemTurn,
+  resolveTurn,
+  resolveFoeOnlyTurn,
+} from './battle.js';
 import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve } from './level.js';
@@ -77,6 +86,34 @@ function attackLabel() {
   return battle?.allies ? '小队攻击' : '攻击';
 }
 
+function canUseHealItem() {
+  if (!battle || battleBusy || continueResolver) return false;
+  const mon = battle.player;
+  if (!mon || mon.hp <= 0 || mon.hp >= mon.maxHp) return false;
+  return Object.keys(HEAL_ITEMS).some((id) => (state.items?.[id] || 0) > 0);
+}
+
+function updateItemButton() {
+  const btn = $('btn-item');
+  if (!btn) return;
+  btn.disabled = !canUseHealItem();
+}
+
+function closeItemPanel() {
+  $('item-panel')?.classList.add('hidden');
+}
+
+function setBattleActionBusy(busy) {
+  $('btn-attack').disabled = busy;
+  $('btn-flee-battle').disabled = busy;
+  if (busy) {
+    $('btn-item').disabled = true;
+    closeItemPanel();
+  } else {
+    updateItemButton();
+  }
+}
+
 function resetAttackButton() {
   const btn = $('btn-attack');
   btn.textContent = attackLabel();
@@ -84,6 +121,7 @@ function resetAttackButton() {
   $('btn-flee-battle').disabled = false;
   battleBusy = false;
   continueResolver = null;
+  updateItemButton();
 }
 
 function waitForContinue(message) {
@@ -92,6 +130,8 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
+    $('btn-item').disabled = true;
+    closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
       btn.textContent = attackLabel();
@@ -126,10 +166,14 @@ function hydrateState(parsed) {
     ...base,
     ...parsed,
     balls: { ...base.balls, ...(parsed.balls || {}) },
+    items: { ...emptyHealItems(), ...(parsed.items || {}) },
     party: trimParty((parsed.party || base.party).map((p) => ({ ...p }))),
     cleared: { ...(parsed.cleared || {}) },
     encounters: { ...(parsed.encounters || {}) },
   };
+  for (const id of Object.keys(HEAL_ITEMS)) {
+    s.items[id] = Math.max(0, Math.floor(Number(s.items[id]) || 0));
+  }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
@@ -231,6 +275,24 @@ function renderShop() {
         if (state.coins < ball.price) return;
         state.coins -= ball.price;
         state.balls[ball.id] = (state.balls[ball.id] || 0) + 1;
+        afterPurchase();
+      },
+    }));
+  }
+  for (const item of Object.values(HEAL_ITEMS)) {
+    const healLabel = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+    shop.appendChild(shopItem({
+      title: item.name,
+      icon: item.icon,
+      price: item.price,
+      owned: state.items?.[item.id] || 0,
+      disabled: state.coins < item.price,
+      label: healLabel,
+      onBuy: () => {
+        if (state.coins < item.price) return;
+        state.coins -= item.price;
+        if (!state.items) state.items = emptyHealItems();
+        state.items[item.id] = (state.items[item.id] || 0) + 1;
         afterPurchase();
       },
     }));
@@ -841,8 +903,7 @@ function finishTurnOutcome(turn) {
     return;
   }
   appendLog(turn.result === 'draw' ? '同归于尽…你败北了。' : '你没有可以继续对战的宝可梦了…');
-  $('btn-attack').disabled = true;
-  $('btn-flee-battle').disabled = true;
+  setBattleActionBusy(true);
   setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
 }
 
@@ -853,8 +914,7 @@ async function onAttack() {
   }
   if (!battle || battleBusy) return;
   battleBusy = true;
-  $('btn-attack').disabled = true;
-  $('btn-flee-battle').disabled = true;
+  setBattleActionBusy(true);
 
   const startPlayer = { ...battle.player };
   const startFoe = { ...battle.foe };
@@ -862,6 +922,68 @@ async function onAttack() {
   const turn = startAllies
     ? resolveSquadTurn(startPlayer, startAllies, startFoe)
     : resolveTurn(startPlayer, startFoe);
+
+  try {
+    await playTurnHits(turn, startPlayer, startFoe);
+    finishTurnOutcome(turn);
+  } catch (err) {
+    console.error(err);
+    resetAttackButton();
+  }
+}
+
+function renderItemList() {
+  const list = $('item-list');
+  list.innerHTML = '';
+  for (const item of Object.values(HEAL_ITEMS)) {
+    const owned = state.items?.[item.id] || 0;
+    const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'item-row';
+    row.disabled = owned <= 0;
+    row.innerHTML = `
+      <span class="item-icon">${item.icon}</span>
+      <span class="item-name">${item.name}</span>
+      <span class="item-effect">${effect}</span>
+      <span class="item-owned">×${owned}</span>
+    `;
+    row.addEventListener('click', () => onUseItem(item.id));
+    list.appendChild(row);
+  }
+}
+
+function openItemPanel() {
+  if (!canUseHealItem()) return;
+  renderItemList();
+  $('item-panel').classList.remove('hidden');
+}
+
+async function onUseItem(itemId) {
+  if (!battle || battleBusy || continueResolver) return;
+  const item = HEAL_ITEMS[itemId];
+  if (!item) return;
+  if ((state.items?.[itemId] || 0) <= 0) return;
+  const fighter = state.party.find((p) => p.uid === battle.playerUid);
+  if (!fighter || fighter.hp <= 0 || fighter.hp >= fighter.maxHp) return;
+
+  closeItemPanel();
+  battleBusy = true;
+  setBattleActionBusy(true);
+
+  state.items[itemId] -= 1;
+  const amount = applyHealItem(fighter, itemId);
+  battle.player = { ...fighter };
+  appendLog(`使用了 ${item.name}！回复了 ${amount} 点 HP！`);
+  save();
+  renderBattle();
+
+  const startPlayer = { ...battle.player };
+  const startFoe = { ...battle.foe };
+  const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
+  const turn = startAllies
+    ? resolveSquadItemTurn(startPlayer, startAllies, startFoe)
+    : resolveFoeOnlyTurn(startPlayer, startFoe);
 
   try {
     await playTurnHits(turn, startPlayer, startFoe);
@@ -923,13 +1045,14 @@ function openCatchPick() {
 }
 
 function leaveBattle() {
+  closeItemPanel();
   for (const p of state.party) p.hp = p.maxHp;
   save();
   openMap(currentMapId);
 }
 
 function finishBattleWin(evolved) {
-  $('btn-attack').disabled = true;
+  setBattleActionBusy(true);
   const enc = pendingEncounter;
   if (enc.kind === 'trainer' && enc.reward) {
     state.coins += enc.reward;
@@ -1178,8 +1301,15 @@ $('btn-cancel-pick').addEventListener('click', () => {
   else if (pickMode === 'lead') openMap(currentMapId);
 });
 $('btn-attack').addEventListener('click', onAttack);
+$('btn-item').addEventListener('click', () => {
+  if (battleBusy || continueResolver) return;
+  if ($('item-panel').classList.contains('hidden')) openItemPanel();
+  else closeItemPanel();
+});
+$('btn-close-items').addEventListener('click', closeItemPanel);
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
+  closeItemPanel();
   leaveBattle();
 });
 $('btn-skip-catch').addEventListener('click', skipCatch);

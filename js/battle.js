@@ -123,6 +123,68 @@ export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
 }
 
 /**
+ * Player used an item this turn: only the foe attacks.
+ */
+export function resolveFoeOnlyTurn(player, foe) {
+  const logs = [];
+  const p = { ...player };
+  const f = { ...foe };
+  if (p.hp > 0 && f.hp > 0) {
+    const fMove = SPECIES[f.speciesId].move;
+    const { damage, typeMult } = calcDamage(f, p, fMove);
+    p.hp = Math.max(0, p.hp - damage);
+    logs.push({
+      text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
+      damage,
+      typeMult,
+      moveType: fMove.type,
+      side: 'foe',
+    });
+  }
+
+  let result = 'ongoing';
+  if (f.hp <= 0 && p.hp <= 0) result = 'draw';
+  else if (f.hp <= 0) result = 'win';
+  else if (p.hp <= 0) result = 'lose';
+
+  return { player: p, foe: f, logs, result };
+}
+
+/**
+ * Item turn in a squad raid: player/allies skip attacking; boss still uses its kit.
+ */
+export function resolveSquadItemTurn(player, allies, foe, rng = Math.random) {
+  const p = { ...player };
+  const team = allies.map((ally) => ({ ...ally }));
+  const f = { ...foe };
+  const logs = [];
+
+  const living = () => [
+    { kind: 'player', mon: p },
+    ...team.map((mon, index) => ({ kind: 'ally', mon, index })),
+  ].filter((a) => a.mon.hp > 0);
+
+  if (f.hp > 0 && living().length) {
+    const kit = speciesMoves(f.speciesId);
+    const heavies = kit.filter((move) => !move.aoe);
+    const waves = kit.filter((move) => move.aoe);
+    const heavy = heavies[Math.min(heavies.length - 1, Math.floor(rng() * heavies.length))] || kit[0];
+    castBossMove(f, heavy, living(), logs, rng);
+    if (living().length) {
+      for (const wave of waves) castBossMove(f, wave, living(), logs, rng);
+    }
+  }
+
+  const alliesUp = team.some((ally) => ally.hp > 0);
+  let result = 'ongoing';
+  if (f.hp <= 0) result = 'win';
+  else if (p.hp <= 0 && alliesUp) result = 'switch';
+  else if (p.hp <= 0) result = 'lose';
+
+  return { player: p, allies: team, foe: f, logs, result };
+}
+
+/**
  * What happens after a turn once someone may have fainted.
  * foeRemaining: trainer Pokémon not yet sent. playerBackup: conscious party
  * members other than the one that just fainted.
@@ -201,6 +263,59 @@ export function resolveDualTurn(players, foes, rng = Math.random) {
       typeMult,
       moveType: move.type,
       side: actor.side,
+      actorIndex: actor.index,
+      targetIndex: preferred.index,
+    });
+  }
+
+  const playersUp = livingPlayers().length;
+  const foesUp = livingFoes().length;
+  let result = 'ongoing';
+  if (foesUp <= 0 && playersUp <= 0) result = 'draw';
+  else if (foesUp <= 0) result = 'win';
+  else if (playersUp <= 0) result = 'lose';
+  else if (team.some((mon) => mon.hp <= 0)) result = 'switch';
+
+  return { players: team, foes: enemy, logs, result };
+}
+
+/**
+ * Dual item turn: players skip attacking; living foes still strike.
+ */
+export function resolveDualItemTurn(players, foes, rng = Math.random) {
+  const team = players.map((mon) => ({ ...mon }));
+  const enemy = foes.map((mon) => ({ ...mon }));
+  const logs = [];
+
+  const livingPlayers = () => team
+    .map((mon, index) => ({ side: 'player', index, mon }))
+    .filter((u) => u.mon.hp > 0);
+  const livingFoes = () => enemy
+    .map((mon, index) => ({ side: 'foe', index, mon }))
+    .filter((u) => u.mon.hp > 0);
+
+  const actors = livingFoes()
+    .sort((a, b) => {
+      if (b.mon.spd !== a.mon.spd) return b.mon.spd - a.mon.spd;
+      return a.index - b.index;
+    });
+
+  for (const actor of actors) {
+    if (actor.mon.hp <= 0) continue;
+    const targets = livingPlayers();
+    if (!targets.length) break;
+    const preferred = targets.find((t) => t.index === actor.index) || targets[0];
+    const move = SPECIES[actor.mon.speciesId].move;
+    const { damage, typeMult } = calcDamage(actor.mon, preferred.mon, move);
+    preferred.mon.hp = Math.max(0, preferred.mon.hp - damage);
+    const atkName = SPECIES[actor.mon.speciesId].name;
+    const defName = SPECIES[preferred.mon.speciesId].name;
+    logs.push({
+      text: `${atkName} 使用了 ${move.name}！打向${defName}，造成 ${damage} 点伤害${typeHint(typeMult)}`,
+      damage,
+      typeMult,
+      moveType: move.type,
+      side: 'foe',
       actorIndex: actor.index,
       targetIndex: preferred.index,
     });

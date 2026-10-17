@@ -6,6 +6,9 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
+  HEAL_ITEMS,
+  emptyHealItems,
+  applyHealItem,
   TWIN_KEY,
   TWIN_KEY_COST,
   TWIN_UNLOCK_LEVEL,
@@ -34,7 +37,15 @@ import {
   listDexTypes,
   getDexDetail,
 } from './data.js';
-import { nextBattleStep, resolveDualTurn, resolveSquadTurn, resolveTurn } from './battle.js';
+import {
+  nextBattleStep,
+  resolveDualTurn,
+  resolveDualItemTurn,
+  resolveSquadTurn,
+  resolveSquadItemTurn,
+  resolveTurn,
+  resolveFoeOnlyTurn,
+} from './battle.js';
 import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
 import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx } from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
@@ -89,6 +100,41 @@ function attackLabel() {
   return '攻击';
 }
 
+function healTargetsOnField() {
+  if (!battle) return [];
+  const mons = battle.dual ? (battle.players || []) : [battle.player];
+  return mons
+    .map((mon, index) => ({ mon, index }))
+    .filter(({ mon }) => mon && mon.hp > 0 && mon.hp < mon.maxHp);
+}
+
+function canUseHealItem() {
+  if (!battle || battleBusy || continueResolver) return false;
+  if (!healTargetsOnField().length) return false;
+  return Object.keys(HEAL_ITEMS).some((id) => (state.items?.[id] || 0) > 0);
+}
+
+function updateItemButton() {
+  const btn = $('btn-item');
+  if (!btn) return;
+  btn.disabled = !canUseHealItem();
+}
+
+function closeItemPanel() {
+  $('item-panel')?.classList.add('hidden');
+}
+
+function setBattleActionBusy(busy) {
+  $('btn-attack').disabled = busy;
+  $('btn-flee-battle').disabled = busy;
+  if (busy) {
+    $('btn-item').disabled = true;
+    closeItemPanel();
+  } else {
+    updateItemButton();
+  }
+}
+
 function resetAttackButton() {
   const btn = $('btn-attack');
   btn.textContent = attackLabel();
@@ -96,6 +142,7 @@ function resetAttackButton() {
   $('btn-flee-battle').disabled = false;
   battleBusy = false;
   continueResolver = null;
+  updateItemButton();
 }
 
 function waitForContinue(message) {
@@ -104,6 +151,8 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
+    $('btn-item').disabled = true;
+    closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
       btn.textContent = attackLabel();
@@ -138,10 +187,14 @@ function hydrateState(parsed) {
     ...base,
     ...parsed,
     balls: { ...base.balls, ...(parsed.balls || {}) },
+    items: { ...emptyHealItems(), ...(parsed.items || {}) },
     party: trimParty((parsed.party || base.party).map((p) => ({ ...p }))),
     cleared: { ...(parsed.cleared || {}) },
     encounters: { ...(parsed.encounters || {}) },
   };
+  for (const id of Object.keys(HEAL_ITEMS)) {
+    s.items[id] = Math.max(0, Math.floor(Number(s.items[id]) || 0));
+  }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
@@ -252,6 +305,24 @@ function renderShop() {
         if (state.coins < ball.price) return;
         state.coins -= ball.price;
         state.balls[ball.id] = (state.balls[ball.id] || 0) + 1;
+        afterPurchase();
+      },
+    }));
+  }
+  for (const item of Object.values(HEAL_ITEMS)) {
+    const healLabel = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+    shop.appendChild(shopItem({
+      title: item.name,
+      icon: item.icon,
+      price: item.price,
+      owned: state.items?.[item.id] || 0,
+      disabled: state.coins < item.price,
+      label: healLabel,
+      onBuy: () => {
+        if (state.coins < item.price) return;
+        state.coins -= item.price;
+        if (!state.items) state.items = emptyHealItems();
+        state.items[item.id] = (state.items[item.id] || 0) + 1;
         afterPurchase();
       },
     }));
@@ -1232,8 +1303,7 @@ function finishTurnOutcome(turn) {
     return;
   }
   appendLog(turn.result === 'draw' ? '同归于尽…你败北了。' : '你没有可以继续对战的宝可梦了…');
-  $('btn-attack').disabled = true;
-  $('btn-flee-battle').disabled = true;
+  setBattleActionBusy(true);
   setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
 }
 
@@ -1244,8 +1314,7 @@ async function onAttack() {
   }
   if (!battle || battleBusy) return;
   battleBusy = true;
-  $('btn-attack').disabled = true;
-  $('btn-flee-battle').disabled = true;
+  setBattleActionBusy(true);
 
   try {
     if (battle.dual) {
@@ -1262,6 +1331,86 @@ async function onAttack() {
     const turn = startAllies
       ? resolveSquadTurn(startPlayer, startAllies, startFoe)
       : resolveTurn(startPlayer, startFoe);
+    await playTurnHits(turn, startPlayer, startFoe);
+    finishTurnOutcome(turn);
+  } catch (err) {
+    console.error(err);
+    resetAttackButton();
+  }
+}
+
+function renderItemList() {
+  const list = $('item-list');
+  list.innerHTML = '';
+  for (const item of Object.values(HEAL_ITEMS)) {
+    const owned = state.items?.[item.id] || 0;
+    const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'item-row';
+    row.disabled = owned <= 0;
+    row.innerHTML = `
+      <span class="item-icon">${item.icon}</span>
+      <span class="item-name">${item.name}</span>
+      <span class="item-effect">${effect}</span>
+      <span class="item-owned">×${owned}</span>
+    `;
+    row.addEventListener('click', () => onUseItem(item.id));
+    list.appendChild(row);
+  }
+}
+
+function openItemPanel() {
+  if (!canUseHealItem()) return;
+  renderItemList();
+  $('item-panel').classList.remove('hidden');
+}
+
+async function onUseItem(itemId) {
+  if (!battle || battleBusy || continueResolver) return;
+  const item = HEAL_ITEMS[itemId];
+  if (!item) return;
+  if ((state.items?.[itemId] || 0) <= 0) return;
+  const targets = healTargetsOnField();
+  if (!targets.length) return;
+  targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
+  const { mon: fieldMon, index: slot } = targets[targets.length - 1];
+  const uid = battle.dual ? battle.playerUids[slot] : battle.playerUid;
+  const fighter = state.party.find((p) => p.uid === uid);
+  if (!fighter || fighter.hp <= 0 || fighter.hp >= fighter.maxHp) return;
+
+  closeItemPanel();
+  battleBusy = true;
+  setBattleActionBusy(true);
+
+  state.items[itemId] -= 1;
+  fighter.hp = fieldMon.hp;
+  const amount = applyHealItem(fighter, itemId);
+  if (battle.dual) {
+    battle.players[slot] = { ...fighter };
+    battle.player = battle.players[0];
+  } else {
+    battle.player = { ...fighter };
+  }
+  appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${amount} 点 HP！`);
+  save();
+  renderBattle();
+
+  try {
+    if (battle.dual) {
+      const startPlayers = battle.players.map((mon) => ({ ...mon }));
+      const startFoes = battle.foes.map((mon) => ({ ...mon }));
+      const turn = resolveDualItemTurn(startPlayers, startFoes);
+      await playDualTurnHits(turn);
+      finishTurnOutcome(turn);
+      return;
+    }
+    const startPlayer = { ...battle.player };
+    const startFoe = { ...battle.foe };
+    const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
+    const turn = startAllies
+      ? resolveSquadItemTurn(startPlayer, startAllies, startFoe)
+      : resolveFoeOnlyTurn(startPlayer, startFoe);
     await playTurnHits(turn, startPlayer, startFoe);
     finishTurnOutcome(turn);
   } catch (err) {
@@ -1368,6 +1517,7 @@ function openCatchPick() {
 }
 
 function leaveBattle() {
+  closeItemPanel();
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
@@ -1375,7 +1525,7 @@ function leaveBattle() {
 }
 
 function finishBattleWin(evolved) {
-  $('btn-attack').disabled = true;
+  setBattleActionBusy(true);
   const enc = pendingEncounter;
   if (enc.kind === 'trainer' && enc.reward) {
     state.coins += enc.reward;
@@ -1625,8 +1775,15 @@ $('btn-cancel-pick').addEventListener('click', () => {
   else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
 });
 $('btn-attack').addEventListener('click', onAttack);
+$('btn-item').addEventListener('click', () => {
+  if (battleBusy || continueResolver) return;
+  if ($('item-panel').classList.contains('hidden')) openItemPanel();
+  else closeItemPanel();
+});
+$('btn-close-items').addEventListener('click', closeItemPanel);
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
+  closeItemPanel();
   leaveBattle();
 });
 $('btn-skip-catch').addEventListener('click', skipCatch);

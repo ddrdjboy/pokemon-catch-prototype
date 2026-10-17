@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=twin1" />
+  <link rel="stylesheet" href="css/game.css?v=heal2" />
   <script type="importmap">
   {
     "imports": {
-      "/js/game.js": "/js/game.js?v=audio1",
+      "/js/game.js": "/js/game.js?v=heal2",
       "/js/audio.js": "/js/audio.js?v=audio1",
-      "/js/data.js": "/js/data.js?v=twin1",
-      "/js/battle.js": "/js/battle.js?v=twin1",
+      "/js/data.js": "/js/data.js?v=heal2",
+      "/js/battle.js": "/js/battle.js?v=heal2",
       "/js/battle-fx.js": "/js/battle-fx.js?v=battlefx2",
       "/js/catch.js": "/js/catch.js?v=rift1",
       "/js/generated-content.js": "/js/generated-content.js?v=rift1",
@@ -120,7 +120,15 @@
         <div id="battle-log" class="battle-log"></div>
         <div class="row-actions">
           <button id="btn-attack" type="button" class="primary">攻击</button>
+          <button id="btn-item" type="button">道具</button>
           <button id="btn-flee-battle" type="button">逃跑</button>
+        </div>
+        <div id="item-panel" class="item-panel hidden">
+          <div class="item-panel-head">
+            <span>选择道具</span>
+            <button id="btn-close-items" type="button">取消</button>
+          </div>
+          <div id="item-list" class="item-list"></div>
         </div>
       </div>
     </section>
@@ -187,6 +195,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=audio1"></script>
+  <script type="module" src="js/game.js?v=heal2"></script>
 </body>
 </html>

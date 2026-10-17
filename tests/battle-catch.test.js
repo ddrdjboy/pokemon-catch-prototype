@@ -1,4 +1,7 @@
-import { calcDamage, nextBattleStep, resolveDualTurn, resolveSquadTurn, whoGoesFirstDeterministic } from '../js/battle.js';
+import {
+  calcDamage, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
+  resolveFoeOnlyTurn, resolveSquadItemTurn, whoGoesFirstDeterministic,
+} from '../js/battle.js';
 import {
   normalizeBattleAnim,
   effectiveBattleAnim,
@@ -13,6 +16,7 @@ import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow 
 import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
   activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, PARTY_STYLES, BALLS,
+  HEAL_ITEMS, applyHealItem, initialPlayerState,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
   partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
@@ -483,6 +487,79 @@ const played = await playFighterFrameStrip(previewImg, 'scorbunny', { frameMs: 0
 assert(played === true, 'preview strip plays');
 assert(seen.filter((s) => String(s).includes('fake-frame')).length === 5, 'visits all five frames');
 assert(previewImg.src === 'static.png', 'restores static sprite');
+
+console.log('heal items');
+assert(HEAL_ITEMS.potion.heal === 20 && HEAL_ITEMS.potion.price === 50, 'potion 20 hp / 50 coins');
+assert(HEAL_ITEMS.superPotion.heal === 50 && HEAL_ITEMS.superPotion.price === 150, 'super potion');
+assert(HEAL_ITEMS.hyperPotion.heal === 200 && HEAL_ITEMS.hyperPotion.price === 400, 'hyper potion');
+assert(HEAL_ITEMS.maxPotion.heal === 'full' && HEAL_ITEMS.maxPotion.price === 800, 'max potion');
+const starterItems = initialPlayerState().items;
+assert(
+  starterItems.potion === 0
+    && starterItems.superPotion === 0
+    && starterItems.hyperPotion === 0
+    && starterItems.maxPotion === 0,
+  'new game starts with zero heal items',
+);
+const hurt = createPokemon('scorbunny', 5);
+hurt.hp = Math.max(1, hurt.maxHp - 30);
+const healed = applyHealItem(hurt, 'potion');
+assert(healed === 20, 'potion heals 20');
+assert(hurt.hp === Math.max(1, hurt.maxHp - 30) + 20, 'hp raised by 20');
+const almostFull = createPokemon('scorbunny', 5);
+almostFull.hp = almostFull.maxHp - 5;
+assert(applyHealItem(almostFull, 'potion') === 5, 'potion clamps to maxHp');
+assert(almostFull.hp === almostFull.maxHp, 'clamped at max');
+const low = createPokemon('scorbunny', 5);
+low.hp = 1;
+const fullHeal = applyHealItem(low, 'maxPotion');
+assert(fullHeal === low.maxHp - 1 && low.hp === low.maxHp, 'max potion fully restores');
+const fainted = createPokemon('scorbunny', 5);
+fainted.hp = 0;
+assert(applyHealItem(fainted, 'potion') === 0 && fainted.hp === 0, 'cannot heal fainted');
+const topped = createPokemon('scorbunny', 5);
+assert(applyHealItem(topped, 'potion') === 0 && topped.hp === topped.maxHp, 'no heal when full');
+
+console.log('item turn foe only');
+const healTurnPlayer = createPokemon('scorbunny', 10);
+healTurnPlayer.hp = Math.floor(healTurnPlayer.maxHp / 2);
+const healTurnFoe = createPokemon('bulbasaur', 10);
+const healTurnHpBefore = healTurnPlayer.hp;
+const foeOnly = resolveFoeOnlyTurn(healTurnPlayer, healTurnFoe);
+assert(foeOnly.foe.hp === healTurnFoe.hp, 'foe-only does not damage foe');
+assert(foeOnly.player.hp < healTurnHpBefore, 'foe-only damages player');
+assert(foeOnly.logs.length === 1 && foeOnly.logs[0].side === 'foe', 'only foe attack log');
+assert(foeOnly.result === 'ongoing' || foeOnly.result === 'lose', 'foe-only result set');
+
+const itemSquadLead = createPokemon('scorbunny', 100);
+itemSquadLead.hp = Math.floor(itemSquadLead.maxHp / 2);
+const itemSquadAllies = createRiftAllies();
+const itemBoss = createPokemon('mega_rayquaza', 200);
+const itemAllyHpBefore = itemSquadAllies.map((a) => a.hp);
+const squadItem = resolveSquadItemTurn(itemSquadLead, itemSquadAllies, itemBoss, () => 0);
+assert(squadItem.foe.hp === itemBoss.hp, 'squad item turn does not damage boss');
+assert(
+  squadItem.player.hp < itemSquadLead.hp || squadItem.allies.some((a, i) => a.hp < itemAllyHpBefore[i]),
+  'boss still attacks on item turn',
+);
+assert(squadItem.logs.every((l) => l.side === 'foe'), 'squad item turn only foe logs');
+
+const dualItemPlayers = [
+  createPokemon('scorbunny', 50),
+  createPokemon('charmander', 50),
+];
+dualItemPlayers[0].hp = Math.floor(dualItemPlayers[0].maxHp / 2);
+const dualItemFoes = [
+  createPokemon('bulbasaur', 50),
+  createPokemon('squirtle', 50),
+];
+const dualItem = resolveDualItemTurn(dualItemPlayers, dualItemFoes, () => 0);
+assert(dualItem.foes.every((f, i) => f.hp === dualItemFoes[i].hp), 'dual item turn does not damage foes');
+assert(dualItem.logs.every((l) => l.side === 'foe'), 'dual item turn only foe logs');
+assert(
+  dualItem.players.some((p, i) => p.hp < dualItemPlayers[i].hp),
+  'foes still attack on dual item turn',
+);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

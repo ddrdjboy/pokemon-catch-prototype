@@ -330,6 +330,55 @@ export const SHINY_CHARM = {
   price: 1000,
 };
 
+/** Battle-usable HP restoratives sold in the shop. */
+export const HEAL_ITEMS = {
+  potion: {
+    id: 'potion',
+    name: '伤药',
+    heal: 20,
+    price: 50,
+    icon: '💊',
+  },
+  superPotion: {
+    id: 'superPotion',
+    name: '好伤药',
+    heal: 50,
+    price: 150,
+    icon: '💉',
+  },
+  hyperPotion: {
+    id: 'hyperPotion',
+    name: '厉害伤药',
+    heal: 200,
+    price: 400,
+    icon: '🧪',
+  },
+  maxPotion: {
+    id: 'maxPotion',
+    name: '全满药',
+    heal: 'full',
+    price: 800,
+    icon: '🧴',
+  },
+};
+
+export function emptyHealItems() {
+  return { potion: 0, superPotion: 0, hyperPotion: 0, maxPotion: 0 };
+}
+
+/**
+ * Heal a conscious mon with a heal item. Returns HP actually restored (0 if none).
+ */
+export function applyHealItem(mon, itemId) {
+  const item = HEAL_ITEMS[itemId];
+  if (!item || !mon || mon.hp <= 0) return 0;
+  const missing = Math.max(0, mon.maxHp - mon.hp);
+  if (missing <= 0) return 0;
+  const amount = item.heal === 'full' ? missing : Math.min(item.heal, missing);
+  mon.hp += amount;
+  return amount;
+}
+
 const BASE_MAPS = {
   grassland: {
     id: 'grassland',
@@ -891,6 +940,7 @@ export function initialPlayerState() {
     partyStyle: 'capsule',
     battleAnim: 'light',
     balls: { poke: 5, great: 0, ultra: 0, quick: 0, master: 0 },
+    items: emptyHealItems(),
     party: [createPokemon('scorbunny', 5)],
     cleared: {},
     encounters: {},

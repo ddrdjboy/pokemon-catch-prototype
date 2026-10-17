@@ -204,6 +204,7 @@ function renderSelect() {
   const count = $('party-count');
   count.textContent = `${state.party.length}/${PARTY_CAP}`;
   count.classList.toggle('full', state.party.length >= PARTY_CAP);
+  applyPartyStyle();
   renderParty($('party-list'), false);
 }
 
@@ -290,69 +291,141 @@ function shopItem({ title, img, price, owned, disabled, onBuy, label, icon }) {
   return el;
 }
 
+let openPartyUid = null;
+let partyOutsideListenerBound = false;
+
+function applyPartyStyle() {
+  const pane = $('party-pane');
+  if (pane) pane.dataset.partyStyle = state.partyStyle || 'capsule';
+  const modal = $('party-style-modal');
+  if (!modal) return;
+  for (const btn of modal.querySelectorAll('[data-party-style]')) {
+    btn.classList.toggle('selected', btn.dataset.partyStyle === state.partyStyle);
+  }
+}
+
+function closePartyPopover() {
+  if (openPartyUid == null) return;
+  openPartyUid = null;
+  const list = $('party-list');
+  if (list) renderParty(list, false);
+}
+
+function bindPartyOutsideClose() {
+  if (partyOutsideListenerBound) return;
+  partyOutsideListenerBound = true;
+  document.addEventListener('pointerdown', (e) => {
+    if (openPartyUid == null) return;
+    if (e.target.closest?.('.party-popover') || e.target.closest?.('#party-list .party-card')) return;
+    closePartyPopover();
+  });
+}
+
+function canShiftParty(uid, dir) {
+  const probe = state.party.map((p) => ({ uid: p.uid }));
+  return moveWithinZone(probe, uid, dir);
+}
+
+function runPartyAction(fn) {
+  if (!fn()) return;
+  openPartyUid = null;
+  save();
+  renderSelect();
+}
+
+function buildPartyPopover(mon, index) {
+  const pop = document.createElement('div');
+  pop.className = 'party-popover';
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  const active = index >= 0 && index < ACTIVE_CAP;
+  const add = (label, disabled, title, onClick) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.disabled = disabled;
+    if (title) btn.title = title;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!btn.disabled) onClick();
+    });
+    pop.appendChild(btn);
+  };
+  add('左移', !canShiftParty(mon.uid, -1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, -1)));
+  add('右移', !canShiftParty(mon.uid, 1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, 1)));
+  if (active) {
+    const noBag = state.party.length <= ACTIVE_CAP;
+    add('收回', noBag, noBag ? '背包里没有位置：队伍不足以收回' : '', () => runPartyAction(() => recallToBag(state.party, mon.uid)));
+  } else {
+    add('上场', false, '', () => runPartyAction(() => sendToActive(state.party, mon.uid)));
+  }
+  return pop;
+}
+
 function renderParty(container, selectable, onPick, mons = null, { onlyConscious = false } = {}) {
   container.innerHTML = '';
   let list = mons || state.party;
   if (onlyConscious) list = list.filter((mon) => mon.hp > 0);
-  for (const mon of list) {
+  if (!selectable) bindPartyOutsideClose();
+  if (!selectable && openPartyUid != null && !state.party.some((p) => p.uid === openPartyUid)) openPartyUid = null;
+
+  const buildCard = (mon) => {
     const sp = SPECIES[mon.speciesId];
     const card = document.createElement(selectable ? 'button' : 'div');
     if (selectable) card.type = 'button';
     card.className = `party-card${selectable ? ' selectable' : ''}${mon.shiny ? ' shiny' : ''}`;
-    const price = sellPrice(mon);
-    const lastOne = state.party.length <= 1;
     const index = state.party.findIndex((p) => p.uid === mon.uid);
     const inBattle = index >= 0 && index < ACTIVE_CAP;
     if (inBattle && !selectable) card.classList.add('in-battle');
     card.innerHTML = `
       <div class="sprite-frame"><img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" /></div>
-      <div class="body">
-        <strong>${sp.name}</strong>
-        <div>Lv.${mon.level}${mon.hp <= 0 ? ' · 已倒下' : ` · HP ${mon.hp}/${mon.maxHp}`}</div>
-        <div>经验 ${mon.exp ?? 0}/${xpToNext(mon.level)}</div>
-        <div>攻${mon.atk} 防${mon.def} 速${mon.spd}</div>
-        <div class="tags">
-          <span class="tag type">${typeLabel(sp.type)}</span>
-          ${inBattle ? '<span class="tag battle">出场</span>' : ''}
-          ${mon.shiny ? '<span class="tag shiny">闪光</span>' : ''}
-          ${mon.boss ? '<span class="tag boss">头目</span>' : ''}
-          ${sp.mega ? '<span class="tag mega">超级</span>' : ''}
-        </div>
-      </div>
+      <strong>${sp.name}</strong>
+      <div class="meta">Lv.${mon.level}${mon.hp <= 0 ? ' · 倒' : ''}</div>
     `;
     if (selectable) {
       card.addEventListener('click', () => onPick(mon));
-    } else {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'sell';
-      btn.textContent = `卖掉 ${price} 金币`;
-      btn.disabled = lastOne;
-      btn.title = lastOne ? '至少保留一只宝可梦' : `卖掉${sp.name}，获得 ${price} 金币`;
-      btn.addEventListener('click', () => sellFromParty(mon));
-      const actions = document.createElement('div');
-      actions.className = 'party-actions';
-      const up = document.createElement('button');
-      up.type = 'button';
-      up.textContent = '上移';
-      up.disabled = index <= 0;
-      up.addEventListener('click', () => shiftParty(mon.uid, -1));
-      const down = document.createElement('button');
-      down.type = 'button';
-      down.textContent = '下移';
-      down.disabled = index < 0 || index >= state.party.length - 1;
-      down.addEventListener('click', () => shiftParty(mon.uid, 1));
-      actions.append(up, down, btn);
-      card.querySelector('.body').appendChild(actions);
+      return card;
     }
-    container.appendChild(card);
-  }
-}
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    const toggle = () => {
+      openPartyUid = openPartyUid === mon.uid ? null : mon.uid;
+      renderParty(container, false);
+    };
+    card.addEventListener('click', toggle);
+    card.addEventListener('keydown', (e) => {
+      if (e.target !== card) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+    if (openPartyUid === mon.uid) {
+      card.classList.add('open');
+      card.appendChild(buildPartyPopover(mon, index));
+    }
+    return card;
+  };
 
-function shiftParty(uid, dir) {
-  if (!movePartyMember(state.party, uid, dir)) return;
-  save();
-  renderSelect();
+  if (!selectable && state.partyStyle === 'split') {
+    const makeZone = (label, zone, mems) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'party-zone';
+      const lab = document.createElement('div');
+      lab.className = 'party-zone-label';
+      lab.textContent = label;
+      const rail = document.createElement('div');
+      rail.className = 'party-rail';
+      rail.dataset.zone = zone;
+      for (const mon of mems) rail.appendChild(buildCard(mon));
+      wrap.append(lab, rail);
+      return wrap;
+    };
+    container.appendChild(makeZone('出场', 'active', list.slice(0, ACTIVE_CAP)));
+    if (list.length > ACTIVE_CAP) container.appendChild(makeZone('背包', 'bag', list.slice(ACTIVE_CAP)));
+    return;
+  }
+
+  for (const mon of list) container.appendChild(buildCard(mon));
 }
 
 function sellFromParty(mon) {

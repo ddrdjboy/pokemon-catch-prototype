@@ -452,6 +452,41 @@ export function movePartyMember(party, uid, dir) {
   return true;
 }
 
+export const PARTY_STYLES = ['capsule', 'tile', 'split'];
+
+/** Same-zone reorder only. Never crosses ACTIVE_CAP boundary. */
+export function moveWithinZone(party, uid, dir, cap = ACTIVE_CAP) {
+  const i = party.findIndex((p) => p.uid === uid);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= party.length) return false;
+  const iActive = i < cap;
+  const jActive = j < cap;
+  if (iActive !== jActive) return false;
+  const [mon] = party.splice(i, 1);
+  party.splice(j, 0, mon);
+  return true;
+}
+
+/** Move an active mon to the end of party (bag). Requires a real bag. */
+export function recallToBag(party, uid, cap = ACTIVE_CAP) {
+  if (!Array.isArray(party) || party.length <= cap) return false;
+  const i = party.findIndex((p) => p.uid === uid);
+  if (i < 0 || i >= cap) return false;
+  const [mon] = party.splice(i, 1);
+  party.push(mon);
+  return true;
+}
+
+/** Insert a bag mon as the new last active slot (index cap-1). */
+export function sendToActive(party, uid, cap = ACTIVE_CAP) {
+  if (!Array.isArray(party) || party.length <= cap) return false;
+  const i = party.findIndex((p) => p.uid === uid);
+  if (i < 0 || i < cap) return false;
+  const [mon] = party.splice(i, 1);
+  party.splice(cap - 1, 0, mon);
+  return true;
+}
+
 /** Levels shown for a wild encounter or a trainer team. */
 export function encounterLevels(enc) {
   if (enc?.kind === 'trainer' && enc.team?.length) return enc.team.map((m) => m.level);
@@ -618,6 +653,7 @@ export function initialPlayerState() {
     riftFruit: 0,
     hasShinyCharm: false,
     catchStyle: 'flick',
+    partyStyle: 'capsule',
     balls: { poke: 5, great: 0, ultra: 0, quick: 0, master: 0 },
     party: [createPokemon('scorbunny', 5)],
     cleared: {},

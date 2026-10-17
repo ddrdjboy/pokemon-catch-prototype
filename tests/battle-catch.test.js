@@ -2,7 +2,7 @@ import { calcDamage, nextBattleStep, resolveSquadTurn, whoGoesFirstDeterministic
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
-  activeParty, movePartyMember, BALLS,
+  activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, PARTY_STYLES, BALLS,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
   partyMaxLevel, riftFruitDrop, trySpendRiftFruit,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
@@ -133,6 +133,31 @@ assert(movePartyMember(order, 'p7', -1), 'move the 7th up');
 assert(activeParty(order).some((p) => p.uid === 'p7'), 'moved mon enters the battle team');
 assert(!activeParty(order).some((p) => p.uid === 'p6'), 'displaced mon leaves the battle team');
 assert(!movePartyMember(order, 'p1', -1), 'first mon stays first');
+
+console.log('party zones');
+const z = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ uid: `z${n}` }));
+assert(moveWithinZone(z, 'z3', -1), 'active can swap left');
+assert(z.map((p) => p.uid).slice(0, 3).join() === 'z1,z3,z2', 'swapped inside active');
+assert(!moveWithinZone(z, 'z6', 1), '6th cannot move into bag');
+assert(!moveWithinZone(z, 'z7', -1), 'bag head cannot move into active');
+assert(moveWithinZone(z, 'z8', -1), 'bag can reorder');
+assert(z[6].uid === 'z8' && z[7].uid === 'z7', 'bag swap');
+
+const r = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ uid: `r${n}` }));
+assert(recallToBag(r, 'r2'), 'recall active to bag end');
+assert(r.map((p) => p.uid).join() === 'r1,r3,r4,r5,r6,r7,r2', 'order after recall');
+assert(!activeParty(r).some((p) => p.uid === 'r2'), 'recalled leaves active');
+const small = [1, 2, 3, 4, 5].map((n) => ({ uid: `t${n}` }));
+assert(!recallToBag(small, 't1'), 'no recall when no bag exists');
+
+const s = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ uid: `s${n}` }));
+assert(sendToActive(s, 's8'), 'send bag to 6th slot');
+assert(s.map((p) => p.uid).join() === 's1,s2,s3,s4,s5,s8,s6,s7', 'inserted as 6th');
+assert(activeParty(s).some((p) => p.uid === 's8'), 'sent is active');
+assert(!activeParty(s).some((p) => p.uid === 's6'), 'old 6th benched');
+assert(!sendToActive(s, 's1'), 'active cannot sendToActive');
+
+assert(PARTY_STYLES.includes('capsule') && PARTY_STYLES.includes('tile') && PARTY_STYLES.includes('split'), 'styles listed');
 
 console.log('trainer teams');
 const wildCounts = {

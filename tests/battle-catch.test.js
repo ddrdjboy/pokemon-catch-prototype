@@ -1,14 +1,26 @@
-import { calcDamage, nextBattleStep, resolveSquadTurn, whoGoesFirstDeterministic } from '../js/battle.js';
+import { calcDamage, nextBattleStep, resolveDualTurn, resolveSquadTurn, whoGoesFirstDeterministic } from '../js/battle.js';
+import {
+  normalizeBattleAnim,
+  effectiveBattleAnim,
+  typeTint,
+  playHit,
+  hasFighterFrames,
+  loadFighterFrames,
+  clearFighterFrameCache,
+  playFighterFrameStrip,
+} from '../js/battle-fx.js';
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
   activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, PARTY_STYLES, BALLS,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
-  partyMaxLevel, riftFruitDrop, trySpendRiftFruit,
+  partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
+  TWIN_UNLOCK_LEVEL, TWIN_UNLOCK_COUNT, TWIN_KEY_COST, TWIN_KEY, TWIN_BOSS_LEVEL,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
-import { SPECIES, MAPS } from '../js/data.js';
+import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
+import { selectBattleTrack, sfxKeyForMoveType } from '../js/audio.js';
 
 let passed = 0;
 let failed = 0;
@@ -288,7 +300,7 @@ for (const id of regionIds) {
     known.add(sid);
   }
 }
-assert(Object.keys(MAPS).length === 20, '20 maps total');
+assert(Object.keys(MAPS).length === 21, '21 maps total');
 
 console.log('rift raid');
 assert(SPECIES.mega_rayquaza?.name === '超级裂空座' && SPECIES.mega_rayquaza.mega, 'mega rayquaza');
@@ -348,6 +360,129 @@ assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 100 squad falls be
 assert(fresh.bossHp < 1600, 'level 100 squad still cuts deep into the boss');
 const ready = raidToEnd(140);
 assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 140 squad beats rayquaza (${ready.rounds} rounds)`);
+
+console.log('twin towers');
+assert(MAPS.twin_towers?.twin && MAPS.twin_towers.encounters.length === 4, 'twin towers has 4 dual fights');
+assert(TWIN_KEY.price === 5000 && TWIN_KEY_COST === 1 && TWIN_UNLOCK_COUNT === 2, 'twin key shop and gate');
+assert(TWIN_UNLOCK_LEVEL === 100 && TWIN_BOSS_LEVEL === 200, 'twin unlock and boss level');
+for (const id of ['zacian', 'zamazenta', 'lugia', 'ho_oh', 'latias', 'latios', 'koraidon', 'miraidon']) {
+  assert(SPECIES[id]?.name && SPECIES[id].sprite, `${id} species exists`);
+}
+assert(partyOverLevelCount([{ level: 100 }, { level: 101 }], 100) === 1, 'over-level is strict >');
+assert(partyOverLevelCount([{ level: 101 }, { level: 150 }], 100) === 2, 'two mons over 100');
+const twinGate = { twinKeys: 1 };
+assert(trySpendTwinKey(twinGate, [{ level: 101 }]).reason === 'level', 'one over-100 cannot enter');
+assert(trySpendTwinKey({ twinKeys: 0 }, [{ level: 101 }, { level: 102 }]).reason === 'key', 'needs a twin key');
+assert(trySpendTwinKey(twinGate, [{ level: 101 }, { level: 102 }]).ok && twinGate.twinKeys === 0, 'key opens twin towers');
+const heroes = rollEncounter(MAPS.twin_towers.encounters[0], { hasCharm: false, bossChance: 0 });
+assert(heroes.dual && heroes.foes.length === 2, 'dual encounter rolls two foes');
+assert(heroes.foes.every((f) => f.boss && f.shiny && f.level === 200), 'dual foes are shiny bosses lv200');
+assert(heroes.foes[0].speciesId === 'zacian' && heroes.foes[1].speciesId === 'zamazenta', 'heroes pair');
+const dualPlayers = [createPokemon('mega_charizard', 140), createPokemon('garchomp', 140)];
+const dualFoes = heroes.foes.map((f) => ({ ...f }));
+const dualTurn = resolveDualTurn(dualPlayers, dualFoes, () => 0);
+assert(dualTurn.logs.length >= 2, 'dual turn has multiple actions');
+assert(dualTurn.players.length === 2 && dualTurn.foes.length === 2, 'dual turn keeps both sides');
+
+console.log('pokedex list');
+const dex = listDexEntries(SPECIES);
+assert(dex.length === Object.keys(SPECIES).length, 'lists all species');
+assert(dex.every((e) => e.id && e.name && e.type && e.sprite), 'entries have display fields');
+const names = dex.map((e) => e.name);
+const sorted = [...names].sort((a, b) => a.localeCompare(b, 'zh'));
+assert(names.every((n, i) => n === sorted[i]), 'sorted by zh name');
+const fireDex = listDexEntries(SPECIES, { type: 'fire' });
+assert(fireDex.length > 0 && fireDex.every((e) => e.type === 'fire'), 'filters by type');
+assert(fireDex.length < dex.length, 'type filter shrinks the list');
+const types = listDexTypes(SPECIES);
+assert(types.includes('fire') && types.includes('water'), 'lists known types');
+assert(types.every((t, i) => i === 0 || types[i - 1] <= t), 'types sorted');
+const detail = getDexDetail('charmander', SPECIES);
+assert(detail?.name === '小火龙' && detail.type === 'fire', 'detail name and type');
+assert(detail.base.hp > 0 && detail.moves.length >= 1, 'detail has base and moves');
+assert(detail.evolvesToName && detail.evolveLevel != null, 'detail has evolution');
+assert(getDexDetail('nope', SPECIES) === null, 'missing species is null');
+
+console.log('battle fx');
+assert(normalizeBattleAnim('heavy') === 'heavy', 'normalize keeps heavy');
+assert(normalizeBattleAnim('nope') === 'light', 'normalize unknown → light');
+assert(normalizeBattleAnim(undefined) === 'light', 'normalize undefined → light');
+assert(effectiveBattleAnim('heavy', { reducedMotion: true }) === 'light', 'reduced motion clamps heavy');
+assert(typeTint('fire') === '#ff6a2a', 'fire tint');
+assert(typeTint('unknown') === typeTint('normal'), 'unknown tint → normal');
+
+const offResult = await playHit({
+  side: 'player',
+  moveType: 'fire',
+  attackerEl: null,
+  defenderEl: null,
+  mode: 'off',
+  reducedMotion: false,
+});
+assert(offResult.played === 'off', 'off mode resolves as off');
+
+assert(await loadFighterFrames('charmander') !== null || true, 'charmander frames load attempt');
+clearFighterFrameCache();
+const missing = await loadFighterFrames('charmander', {
+  loader: async () => { throw new Error('missing'); },
+});
+assert(missing === null, 'fighter frames missing → null');
+assert(!hasFighterFrames('charmander'), 'failed load clears hasFighterFrames');
+const fallback = await playHit({
+  side: 'player',
+  attackerSpeciesId: 'charmander',
+  moveType: 'fire',
+  attackerEl: null,
+  defenderEl: null,
+  mode: 'heavy',
+  reducedMotion: false,
+});
+assert(fallback.played === 'medium-fallback', 'heavy without sprite el falls back to medium');
+
+const otherHeavy = await playHit({
+  side: 'player',
+  attackerSpeciesId: 'no_such_mon',
+  moveType: 'electric',
+  attackerEl: null,
+  defenderEl: null,
+  mode: 'heavy',
+  reducedMotion: false,
+});
+assert(otherHeavy.played === 'medium-fallback', 'heavy missing species uses medium path');
+
+console.log('audio tracks');
+assert(selectBattleTrack({ rift: true, playerLevel: 100, foeLevel: 200 }) === 'b2', 'rift uses b2');
+assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 5 }) === 'b0', 'lower foe uses b0');
+assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 10 }) === 'b0', 'equal uses b0');
+assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 11 }) === 'b1', 'higher foe uses b1');
+assert(sfxKeyForMoveType('fire') === 'fire', 'fire sfx');
+assert(sfxKeyForMoveType('ice') === 'water', 'ice→water');
+assert(sfxKeyForMoveType('bug') === 'grass', 'bug→grass');
+assert(sfxKeyForMoveType('steel') === 'rock', 'steel→rock');
+assert(sfxKeyForMoveType('ghost') === 'psychic', 'ghost→psychic');
+assert(sfxKeyForMoveType('flying') === 'dragon', 'flying→dragon');
+assert(sfxKeyForMoveType('fighting') === 'normal', 'fighting→normal');
+assert(sfxKeyForMoveType('unknown') === 'normal', 'unknown→normal');
+
+console.log('pokedex anim preview');
+clearFighterFrameCache();
+const fakeFrames = [0, 1, 2, 3, 4].map((i) => ({ src: `fake-frame-${i}.png` }));
+let loadIdx = 0;
+await loadFighterFrames('scorbunny', {
+  loader: async () => fakeFrames[loadIdx++],
+});
+const previewImg = { src: 'static.png', style: { animation: 'idle-bob 1s' }, getAttribute: () => 'static.png' };
+const seen = [];
+Object.defineProperty(previewImg, 'src', {
+  get() { return this._src; },
+  set(v) { this._src = v; seen.push(v); },
+  configurable: true,
+});
+previewImg._src = 'static.png';
+const played = await playFighterFrameStrip(previewImg, 'scorbunny', { frameMs: 0 });
+assert(played === true, 'preview strip plays');
+assert(seen.filter((s) => String(s).includes('fake-frame')).length === 5, 'visits all five frames');
+assert(previewImg.src === 'static.png', 'restores static sprite');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

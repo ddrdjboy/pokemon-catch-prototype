@@ -4,13 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=heal1" />
+  <link rel="stylesheet" href="css/game.css?v=heal2" />
   <script type="importmap">
   {
     "imports": {
-      "/js/game.js": "/js/game.js?v=heal1",
-      "/js/data.js": "/js/data.js?v=heal1",
-      "/js/battle.js": "/js/battle.js?v=heal1",
+      "/js/game.js": "/js/game.js?v=heal2",
+      "/js/audio.js": "/js/audio.js?v=audio1",
+      "/js/data.js": "/js/data.js?v=heal2",
+      "/js/battle.js": "/js/battle.js?v=heal2",
       "/js/battle-fx.js": "/js/battle-fx.js?v=battlefx2",
       "/js/catch.js": "/js/catch.js?v=rift1",
       "/js/generated-content.js": "/js/generated-content.js?v=rift1",
@@ -24,11 +25,13 @@
     <header class="top-bar">
       <h1>宝可梦对战捕捉</h1>
       <div class="status">
+        <button id="btn-party-style" type="button">显示</button>
         <button id="btn-dex" type="button">图鉴</button>
         <button id="btn-shop" type="button">商店</button>
         <button id="btn-battle-anim" type="button" title="战斗动画：重度目前支持小火龙/炎兔儿打斗帧">动画 · 轻量</button>
         <span id="coin-display">金币 300</span>
         <span id="fruit-display">异次元果 0</span>
+        <span id="twin-key-display">双子钥匙 0</span>
         <span id="charm-display" class="hidden">闪耀护符</span>
       </div>
     </header>
@@ -46,12 +49,10 @@
           </div>
         </div>
       </div>
-      <div class="panel split-pane">
+      <div class="panel split-pane party-pane" id="party-pane">
         <h2 class="party-head">我的宝可梦 <span id="party-count">1/99</span></h2>
-        <div class="pane-scroll">
-          <p class="hint">用上移、下移排序。前 6 只会标成出场，只有它们能参加对战。</p>
-          <div id="party-list" class="party-list"></div>
-        </div>
+        <p class="hint party-hint">点卡排序。前 6 出场；收回进背包，上场回前 6。</p>
+        <div id="party-list" class="party-list"></div>
       </div>
     </section>
 
@@ -81,8 +82,8 @@
     <!-- Screen: battle -->
     <section id="screen-battle" class="screen hidden">
       <div class="panel battle-panel">
-        <div class="battle-field">
-          <div class="fighter foe">
+        <div id="battle-field" class="battle-field">
+          <div class="fighter foe" data-slot="0">
             <div class="name-row">
               <span id="foe-name"></span>
               <span id="foe-tags"></span>
@@ -91,13 +92,29 @@
             <div class="hp-bar"><div id="foe-hp" class="hp-fill"></div></div>
             <div id="foe-sprite-wrap" class="sprite-wrap"></div>
           </div>
+          <div class="fighter foe dual-only hidden" data-slot="1">
+            <div class="name-row">
+              <span id="foe-name-1"></span>
+              <span id="foe-tags-1"></span>
+            </div>
+            <div id="foe-skills-1" class="foe-skills"></div>
+            <div class="hp-bar"><div id="foe-hp-1" class="hp-fill"></div></div>
+            <div id="foe-sprite-wrap-1" class="sprite-wrap"></div>
+          </div>
           <div id="ally-row" class="ally-row hidden"></div>
-          <div class="fighter player">
+          <div class="fighter player" data-slot="0">
             <div id="player-sprite-wrap" class="sprite-wrap"></div>
             <div class="name-row">
               <span id="player-name"></span>
             </div>
             <div class="hp-bar"><div id="player-hp" class="hp-fill"></div></div>
+          </div>
+          <div class="fighter player dual-only hidden" data-slot="1">
+            <div id="player-sprite-wrap-1" class="sprite-wrap"></div>
+            <div class="name-row">
+              <span id="player-name-1"></span>
+            </div>
+            <div class="hp-bar"><div id="player-hp-1" class="hp-fill"></div></div>
           </div>
         </div>
         <div id="battle-log" class="battle-log"></div>
@@ -135,6 +152,17 @@
       </div>
     </section>
   </div>
+  <div id="party-style-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="party-style-title">
+    <div class="panel shop-panel">
+      <h2 id="party-style-title">队伍显示</h2>
+      <div id="party-style-options" class="party-style-options">
+        <button type="button" data-party-style="capsule">胶囊条</button>
+        <button type="button" data-party-style="tile">精灵球瓷砖</button>
+        <button type="button" data-party-style="split">双段横轨</button>
+      </div>
+      <button id="btn-close-party-style" type="button">关闭</button>
+    </div>
+  </div>
   <div id="dex-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dex-title">
     <div class="shop-dialog panel dex-dialog">
       <h2 id="dex-title">图鉴</h2>
@@ -167,6 +195,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=heal1"></script>
+  <script type="module" src="js/game.js?v=heal2"></script>
 </body>
 </html>

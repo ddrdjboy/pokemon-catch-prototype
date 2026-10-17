@@ -16,9 +16,6 @@ import {
   PARTY_CAP,
   ACTIVE_CAP,
   activeParty,
-  movePartyMember,
-  sellPrice,
-  sellPokemon,
   encounterLevels,
   rollEncounter,
   syncEncounters,
@@ -30,7 +27,7 @@ import {
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
-import { gainExperience, xpReward, xpToNext, tryEvolve } from './level.js';
+import { gainExperience, xpReward, tryEvolve } from './level.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-regionpx';
@@ -426,17 +423,6 @@ function renderParty(container, selectable, onPick, mons = null, { onlyConscious
   }
 
   for (const mon of list) container.appendChild(buildCard(mon));
-}
-
-function sellFromParty(mon) {
-  const sp = SPECIES[mon.speciesId];
-  const price = sellPrice(mon);
-  if (state.party.length <= 1) return;
-  if (!confirm(`卖掉${sp?.name || '这只宝可梦'}，获得 ${price} 金币？`)) return;
-  const sold = sellPokemon(state, mon.uid);
-  if (!sold) return;
-  save();
-  renderSelect();
 }
 
 function typeLabel(t) {

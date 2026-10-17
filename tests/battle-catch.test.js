@@ -19,6 +19,7 @@ import {
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
+import { selectBattleTrack, sfxKeyForMoveType } from '../js/audio.js';
 
 let passed = 0;
 let failed = 0;
@@ -399,6 +400,20 @@ const otherHeavy = await playHit({
   reducedMotion: false,
 });
 assert(otherHeavy.played === 'medium-fallback', 'heavy missing species uses medium path');
+
+console.log('audio tracks');
+assert(selectBattleTrack({ rift: true, playerLevel: 100, foeLevel: 200 }) === 'b2', 'rift uses b2');
+assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 5 }) === 'b0', 'lower foe uses b0');
+assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 10 }) === 'b0', 'equal uses b0');
+assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 11 }) === 'b1', 'higher foe uses b1');
+assert(sfxKeyForMoveType('fire') === 'fire', 'fire sfx');
+assert(sfxKeyForMoveType('ice') === 'water', 'ice→water');
+assert(sfxKeyForMoveType('bug') === 'grass', 'bug→grass');
+assert(sfxKeyForMoveType('steel') === 'rock', 'steel→rock');
+assert(sfxKeyForMoveType('ghost') === 'psychic', 'ghost→psychic');
+assert(sfxKeyForMoveType('flying') === 'dragon', 'flying→dragon');
+assert(sfxKeyForMoveType('fighting') === 'normal', 'fighting→normal');
+assert(sfxKeyForMoveType('unknown') === 'normal', 'unknown→normal');
 
 console.log('pokedex anim preview');
 clearFighterFrameCache();

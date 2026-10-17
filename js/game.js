@@ -29,6 +29,7 @@ import {
 } from './data.js';
 import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
 import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
+import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx } from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve } from './level.js';
 
@@ -596,6 +597,11 @@ function startBattle(playerMon, { freshLog = true } = {}) {
   if (freshLog) {
     $('battle-log').innerHTML = '<p>对战开始！</p>';
     if (allies) appendLog('3 只电脑宝可梦加入了小队。');
+    playBattleBgm({
+      rift: !!allies,
+      playerLevel: player.level,
+      foeLevel: foe.level,
+    });
   } else appendLog(`上吧，${SPECIES[player.speciesId].name}！`);
   resetAttackButton();
   showScreen('battle');
@@ -739,6 +745,7 @@ async function playTurnHits(turn, startPlayer, startFoe) {
     const playerWasUp = playerHp > 0;
     appendLog(line.text);
     const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
+    playAttackSfx(line.moveType || 'normal');
     await playHit({
       side: line.side,
       attackerSpeciesId,
@@ -896,6 +903,13 @@ function sendNextFoe() {
   battle.foe = { ...sent };
   appendLog(`${pendingEncounter.trainerName} 派出了 ${SPECIES[sent.speciesId].name}！`);
   renderBattle();
+  if (battle?.player) {
+    playBattleBgm({
+      rift: !!battle.allies,
+      playerLevel: battle.player.level,
+      foeLevel: sent.level,
+    });
+  }
 }
 
 function openSwitchPick() {
@@ -911,6 +925,7 @@ function openSwitchPick() {
 
 function openCatchPick() {
   pickMode = 'catch';
+  playExploreBgm();
   $('pick-title').textContent = '选择要捕捉的宝可梦';
   $('btn-cancel-pick').classList.remove('hidden');
   $('btn-cancel-pick').textContent = '放弃捕捉';
@@ -925,6 +940,7 @@ function openCatchPick() {
 function leaveBattle() {
   for (const p of state.party) p.hp = p.maxHp;
   save();
+  playExploreBgm();
   openMap(currentMapId);
 }
 
@@ -1004,6 +1020,7 @@ function enterCatch(enc) {
     catchCtrl = null;
   }
 
+  playExploreBgm();
   setCatchResult('');
   updateCatchCopy();
   renderCatchStyle();
@@ -1221,6 +1238,12 @@ $('btn-reset-confirm').addEventListener('click', resetGame);
 $('reset-modal').addEventListener('click', (e) => {
   if (e.target === $('reset-modal')) closeResetConfirm();
 });
+
+document.addEventListener('pointerdown', () => {
+  unlockAudio();
+  const onBattle = !screens.battle.classList.contains('hidden');
+  if (!onBattle) playExploreBgm();
+}, { once: true });
 
 save();
 showScreen('select');

@@ -286,31 +286,7 @@ Do **not** append sell / 上移 / 下移 buttons in manage mode anymore.
 Track `openPartyUid`. On manage-mode card click:
 
 - If same uid open → close popover and return.
-- Else build a `.party-popover` with up to three buttons:
-
-```js
-function canMoveLeft(index) {
-  return index > 0 && (index < ACTIVE_CAP ? index - 1 < ACTIVE_CAP : true) && movePreviewOk(index, -1);
-}
-```
-
-Prefer computing disabled flags with the same rules as `moveWithinZone`:
-
-```js
-const inActive = index < ACTIVE_CAP;
-const canLeft = moveWithinZone([...state.party], mon.uid, -1) === false
-  ? false
-  : true;
-```
-
-Better — pure checks without mutating a copy incorrectly. Use:
-
-```js
-function canShift(uid, dir) {
-  const probe = state.party.map((p) => ({ ...p }));
-  return moveWithinZone(probe, uid, dir);
-}
-```
+- Else build a `.party-popover` with up to three buttons.
 
 Helper:
 

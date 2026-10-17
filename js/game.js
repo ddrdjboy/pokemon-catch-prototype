@@ -1117,6 +1117,32 @@ $('reset-modal').addEventListener('click', (e) => {
   if (e.target === $('reset-modal')) closeResetConfirm();
 });
 
+function openPartyStyleModal() {
+  $('party-style-modal').classList.remove('hidden');
+  applyPartyStyle();
+}
+
+function closePartyStyleModal() {
+  $('party-style-modal').classList.add('hidden');
+}
+
+$('btn-party-style').addEventListener('click', openPartyStyleModal);
+$('btn-close-party-style').addEventListener('click', closePartyStyleModal);
+$('party-style-modal').addEventListener('click', (e) => {
+  if (e.target === $('party-style-modal')) closePartyStyleModal();
+});
+$('party-style-options').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-party-style]');
+  if (!btn) return;
+  const style = btn.dataset.partyStyle;
+  if (!PARTY_STYLES.includes(style)) return;
+  state.partyStyle = style;
+  save();
+  applyPartyStyle();
+  renderParty($('party-list'), false);
+  closePartyStyleModal();
+});
+
 save();
 showScreen('select');
 renderSelect();

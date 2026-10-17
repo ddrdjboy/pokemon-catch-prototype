@@ -1,4 +1,4 @@
-import { calcDamage, nextBattleStep, resolveSquadTurn, whoGoesFirstDeterministic } from '../js/battle.js';
+import { calcDamage, nextBattleStep, resolveDualTurn, resolveSquadTurn, whoGoesFirstDeterministic } from '../js/battle.js';
 import {
   normalizeBattleAnim,
   effectiveBattleAnim,
@@ -14,8 +14,9 @@ import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
   activeParty, movePartyMember, BALLS,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
-  partyMaxLevel, riftFruitDrop, trySpendRiftFruit,
+  partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
+  TWIN_UNLOCK_LEVEL, TWIN_UNLOCK_COUNT, TWIN_KEY_COST, TWIN_KEY, TWIN_BOSS_LEVEL,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
@@ -274,7 +275,7 @@ for (const id of regionIds) {
     known.add(sid);
   }
 }
-assert(Object.keys(MAPS).length === 20, '20 maps total');
+assert(Object.keys(MAPS).length === 21, '21 maps total');
 
 console.log('rift raid');
 assert(SPECIES.mega_rayquaza?.name === '超级裂空座' && SPECIES.mega_rayquaza.mega, 'mega rayquaza');
@@ -334,6 +335,29 @@ assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 100 squad falls be
 assert(fresh.bossHp < 1600, 'level 100 squad still cuts deep into the boss');
 const ready = raidToEnd(140);
 assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 140 squad beats rayquaza (${ready.rounds} rounds)`);
+
+console.log('twin towers');
+assert(MAPS.twin_towers?.twin && MAPS.twin_towers.encounters.length === 4, 'twin towers has 4 dual fights');
+assert(TWIN_KEY.price === 5000 && TWIN_KEY_COST === 1 && TWIN_UNLOCK_COUNT === 2, 'twin key shop and gate');
+assert(TWIN_UNLOCK_LEVEL === 100 && TWIN_BOSS_LEVEL === 200, 'twin unlock and boss level');
+for (const id of ['zacian', 'zamazenta', 'lugia', 'ho_oh', 'latias', 'latios', 'koraidon', 'miraidon']) {
+  assert(SPECIES[id]?.name && SPECIES[id].sprite, `${id} species exists`);
+}
+assert(partyOverLevelCount([{ level: 100 }, { level: 101 }], 100) === 1, 'over-level is strict >');
+assert(partyOverLevelCount([{ level: 101 }, { level: 150 }], 100) === 2, 'two mons over 100');
+const twinGate = { twinKeys: 1 };
+assert(trySpendTwinKey(twinGate, [{ level: 101 }]).reason === 'level', 'one over-100 cannot enter');
+assert(trySpendTwinKey({ twinKeys: 0 }, [{ level: 101 }, { level: 102 }]).reason === 'key', 'needs a twin key');
+assert(trySpendTwinKey(twinGate, [{ level: 101 }, { level: 102 }]).ok && twinGate.twinKeys === 0, 'key opens twin towers');
+const heroes = rollEncounter(MAPS.twin_towers.encounters[0], { hasCharm: false, bossChance: 0 });
+assert(heroes.dual && heroes.foes.length === 2, 'dual encounter rolls two foes');
+assert(heroes.foes.every((f) => f.boss && f.shiny && f.level === 200), 'dual foes are shiny bosses lv200');
+assert(heroes.foes[0].speciesId === 'zacian' && heroes.foes[1].speciesId === 'zamazenta', 'heroes pair');
+const dualPlayers = [createPokemon('mega_charizard', 140), createPokemon('garchomp', 140)];
+const dualFoes = heroes.foes.map((f) => ({ ...f }));
+const dualTurn = resolveDualTurn(dualPlayers, dualFoes, () => 0);
+assert(dualTurn.logs.length >= 2, 'dual turn has multiple actions');
+assert(dualTurn.players.length === 2 && dualTurn.foes.length === 2, 'dual turn keeps both sides');
 
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);

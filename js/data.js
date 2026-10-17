@@ -140,6 +140,86 @@ const BASE_SPECIES = {
     eyeOffset: { x: 0, y: -6 },
     mega: true,
   },
+  zacian: {
+    id: 'zacian',
+    name: '苍响',
+    type: 'fairy',
+    base: { hp: 92, atk: 120, def: 95, spd: 118 },
+    move: { name: '圣剑', power: 110, type: 'fairy' },
+    catchRate: 0.05,
+    sprite: 'assets/pokemon/zacian.png',
+    eyeOffset: { x: 0, y: -10 },
+  },
+  zamazenta: {
+    id: 'zamazenta',
+    name: '藏玛然特',
+    type: 'fighting',
+    base: { hp: 92, atk: 110, def: 125, spd: 108 },
+    move: { name: '巨兽斩', power: 105, type: 'fighting' },
+    catchRate: 0.05,
+    sprite: 'assets/pokemon/zamazenta.png',
+    eyeOffset: { x: 0, y: -10 },
+  },
+  lugia: {
+    id: 'lugia',
+    name: '洛奇亚',
+    type: 'psychic',
+    base: { hp: 106, atk: 90, def: 110, spd: 100 },
+    move: { name: '空气爆破', power: 100, type: 'flying' },
+    catchRate: 0.05,
+    sprite: 'assets/pokemon/lugia.png',
+    eyeOffset: { x: 0, y: -8 },
+  },
+  ho_oh: {
+    id: 'ho_oh',
+    name: '凤王',
+    type: 'fire',
+    base: { hp: 106, atk: 110, def: 90, spd: 100 },
+    move: { name: '神圣之火', power: 110, type: 'fire' },
+    catchRate: 0.05,
+    sprite: 'assets/pokemon/ho_oh.png',
+    eyeOffset: { x: 0, y: -8 },
+  },
+  latias: {
+    id: 'latias',
+    name: '拉帝亚斯',
+    type: 'psychic',
+    base: { hp: 80, atk: 100, def: 100, spd: 110 },
+    move: { name: '薄雾球', power: 95, type: 'psychic' },
+    catchRate: 0.06,
+    sprite: 'assets/pokemon/latias.png',
+    eyeOffset: { x: 0, y: -10 },
+  },
+  latios: {
+    id: 'latios',
+    name: '拉帝欧斯',
+    type: 'dragon',
+    base: { hp: 80, atk: 110, def: 90, spd: 110 },
+    move: { name: '洁净光芒', power: 100, type: 'dragon' },
+    catchRate: 0.06,
+    sprite: 'assets/pokemon/latios.png',
+    eyeOffset: { x: 0, y: -10 },
+  },
+  koraidon: {
+    id: 'koraidon',
+    name: '故勒顿',
+    type: 'fighting',
+    base: { hp: 100, atk: 125, def: 95, spd: 115 },
+    move: { name: '大愤慨', power: 120, type: 'fighting' },
+    catchRate: 0.04,
+    sprite: 'assets/pokemon/koraidon.png',
+    eyeOffset: { x: 0, y: -6 },
+  },
+  miraidon: {
+    id: 'miraidon',
+    name: '密勒顿',
+    type: 'electric',
+    base: { hp: 100, atk: 125, def: 90, spd: 115 },
+    move: { name: '电光束', power: 120, type: 'electric' },
+    catchRate: 0.04,
+    sprite: 'assets/pokemon/miraidon.png',
+    eyeOffset: { x: 0, y: -6 },
+  },
 };
 
 export const SPECIES = { ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES };
@@ -461,7 +541,81 @@ const RIFT_MAP = {
   ],
 };
 
-export const MAPS = { ...BASE_MAPS, ...GENERATED_MAPS, ...REGION_MAPS, rift: RIFT_MAP };
+export const TWIN_UNLOCK_LEVEL = 100;
+export const TWIN_UNLOCK_COUNT = 2;
+export const TWIN_KEY_COST = 1;
+export const TWIN_BOSS_LEVEL = 200;
+export const TWIN_KEY = {
+  id: 'twinKey',
+  name: '双子钥匙',
+  price: 5000,
+};
+
+const TWIN_MAP = {
+  id: 'twin_towers',
+  name: '双子塔',
+  image: 'assets/maps/twin_towers.png',
+  bossChance: 0,
+  twin: true,
+  encounters: [
+    {
+      id: 'heroes',
+      kind: 'wild',
+      dual: true,
+      level: TWIN_BOSS_LEVEL,
+      foes: [
+        { speciesId: 'zacian' },
+        { speciesId: 'zamazenta' },
+      ],
+      x: 28,
+      y: 42,
+    },
+    {
+      id: 'towers',
+      kind: 'wild',
+      dual: true,
+      level: TWIN_BOSS_LEVEL,
+      foes: [
+        { speciesId: 'lugia' },
+        { speciesId: 'ho_oh' },
+      ],
+      x: 72,
+      y: 40,
+    },
+    {
+      id: 'eon',
+      kind: 'wild',
+      dual: true,
+      level: TWIN_BOSS_LEVEL,
+      foes: [
+        { speciesId: 'latias' },
+        { speciesId: 'latios' },
+      ],
+      x: 38,
+      y: 68,
+    },
+    {
+      id: 'paradox',
+      kind: 'wild',
+      dual: true,
+      level: TWIN_BOSS_LEVEL,
+      foes: [
+        { speciesId: 'koraidon' },
+        { speciesId: 'miraidon' },
+      ],
+      x: 62,
+      y: 70,
+    },
+  ],
+};
+
+export const MAPS = {
+  ...BASE_MAPS,
+  ...GENERATED_MAPS,
+  ...REGION_MAPS,
+  rift: RIFT_MAP,
+  twin_towers: TWIN_MAP,
+};
 
 export const SHINY_RATE_WITH_CHARM = 1 / 8;
 export const BOSS_STAT_MULT = 1.5;
@@ -501,6 +655,11 @@ export function partyMaxLevel(party) {
   return (party || []).reduce((max, mon) => Math.max(max, mon?.level || 0), 0);
 }
 
+/** How many party members are strictly above the given level. */
+export function partyOverLevelCount(party, level) {
+  return (party || []).filter((mon) => (mon?.level || 0) > level).length;
+}
+
 /** One fruit for defeating 菊草叶. Evolutions do not drop it. */
 export function riftFruitDrop(speciesId) {
   return speciesId === RIFT_FRUIT_SPECIES ? 1 : 0;
@@ -522,13 +681,41 @@ export function createRiftAllies() {
   return RIFT_ALLIES.map((slot) => createPokemon(slot.speciesId, slot.level));
 }
 
-/** Roll shiny and boss. Trainer rolls once per team member. Squad bosses are fixed. */
+/**
+ * Spend one twin key to enter the twin towers.
+ * Needs at least TWIN_UNLOCK_COUNT party members above TWIN_UNLOCK_LEVEL.
+ */
+export function trySpendTwinKey(state, party) {
+  if (partyOverLevelCount(party, TWIN_UNLOCK_LEVEL) < TWIN_UNLOCK_COUNT) {
+    return { ok: false, reason: 'level' };
+  }
+  const owned = state.twinKeys || 0;
+  if (owned < TWIN_KEY_COST) return { ok: false, reason: 'key' };
+  state.twinKeys = owned - TWIN_KEY_COST;
+  return { ok: true };
+}
+
+/** Roll shiny and boss. Trainer rolls once per team member. Squad/dual bosses are fixed. */
 export function rollEncounter(tmpl, {
   hasCharm = false,
   bossChance = 0,
   rng = Math.random,
   shinyRate = SHINY_RATE_WITH_CHARM,
 } = {}) {
+  if (tmpl.dual && tmpl.foes?.length) {
+    const foes = tmpl.foes.map((slot) => createPokemon(slot.speciesId, tmpl.level, {
+      shiny: true,
+      boss: true,
+    }));
+    return {
+      ...tmpl,
+      shiny: true,
+      boss: true,
+      speciesId: foes[0].speciesId,
+      foes,
+      pokemon: foes[0],
+    };
+  }
   if (tmpl.squad) {
     return {
       ...tmpl,
@@ -572,6 +759,15 @@ export function syncEncounters(saved, maps, roll) {
     const byId = new Map(current.map((e) => [e.id, e]));
     encounters[mapId] = map.encounters.map((tmpl) => {
       const prev = byId.get(tmpl.id);
+      if (tmpl.dual) {
+        const ready = prev?.dual
+          && prev.foes?.length === tmpl.foes.length
+          && prev.foes.every((mon, i) => (
+            mon.speciesId === tmpl.foes[i].speciesId
+            && mon.shiny && mon.boss && mon.level === tmpl.level
+          ));
+        return ready ? prev : roll(map, tmpl);
+      }
       if (tmpl.squad) {
         const mon = prev?.pokemon;
         const ready = mon?.speciesId === tmpl.speciesId
@@ -654,6 +850,7 @@ export function initialPlayerState() {
   return {
     coins: 300,
     riftFruit: 0,
+    twinKeys: 0,
     hasShinyCharm: false,
     catchStyle: 'flick',
     battleAnim: 'light',

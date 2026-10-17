@@ -6,13 +6,19 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
+  TWIN_KEY,
+  TWIN_KEY_COST,
+  TWIN_UNLOCK_LEVEL,
+  TWIN_UNLOCK_COUNT,
   createPokemon,
   createRiftAllies,
   initialPlayerState,
   partyMaxLevel,
+  partyOverLevelCount,
   riftFruitDrop,
   statsFor,
   trySpendRiftFruit,
+  trySpendTwinKey,
   PARTY_CAP,
   ACTIVE_CAP,
   activeParty,
@@ -27,7 +33,7 @@ import {
   listDexTypes,
   getDexDetail,
 } from './data.js';
-import { nextBattleStep, resolveSquadTurn, resolveTurn } from './battle.js';
+import { nextBattleStep, resolveDualTurn, resolveSquadTurn, resolveTurn } from './battle.js';
 import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
 import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx } from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
@@ -64,6 +70,8 @@ let selectedBallId = 'poke';
 let dexTypeFilter = null;
 let throwsThisEncounter = 0;
 let pickMode = 'lead';
+let dualPickUids = [];
+let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
 
@@ -75,7 +83,9 @@ function wait(ms) {
 }
 
 function attackLabel() {
-  return battle?.allies ? '小队攻击' : '攻击';
+  if (battle?.allies) return '小队攻击';
+  if (battle?.dual) return '双打攻击';
+  return '攻击';
 }
 
 function resetAttackButton() {
@@ -132,6 +142,7 @@ function hydrateState(parsed) {
     encounters: { ...(parsed.encounters || {}) },
   };
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
+  s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
   if (s.balls.dusk) {
@@ -179,6 +190,8 @@ function showScreen(name) {
 function refreshHeader() {
   $('coin-display').textContent = `金币 ${state.coins}`;
   $('fruit-display').textContent = `异次元果 ${state.riftFruit || 0}`;
+  const twinEl = $('twin-key-display');
+  if (twinEl) twinEl.textContent = `双子钥匙 ${state.twinKeys || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
   refreshBattleAnimButton();
 }
@@ -194,13 +207,17 @@ function renderSelect() {
     const levels = enc.flatMap((e) => encounterLevels(e));
     const lvMin = Math.min(...levels);
     const lvMax = Math.max(...levels);
-    const locked = map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL;
+    const twinLocked = map.twin
+      && partyOverLevelCount(state.party, TWIN_UNLOCK_LEVEL) < TWIN_UNLOCK_COUNT;
+    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `map-card${map.rift ? ' rift' : ''}${locked ? ' locked' : ''}`;
+    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${locked ? ' locked' : ''}`;
     const meta = map.rift
       ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
-      : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+      : map.twin
+        ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
+        : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
     card.innerHTML = `
       <img src="${spriteUrl(map.image)}" alt="${map.name}" />
       <div class="meta">
@@ -247,6 +264,21 @@ function renderShop() {
       if (state.coins < RIFT_FRUIT.price) return;
       state.coins -= RIFT_FRUIT.price;
       state.riftFruit = (state.riftFruit || 0) + 1;
+      afterPurchase();
+      renderSelect();
+    },
+  }));
+  shop.appendChild(shopItem({
+    title: TWIN_KEY.name,
+    icon: '🔑',
+    price: TWIN_KEY.price,
+    owned: state.twinKeys || 0,
+    disabled: state.coins < TWIN_KEY.price,
+    label: '进入双子塔',
+    onBuy: () => {
+      if (state.coins < TWIN_KEY.price) return;
+      state.coins -= TWIN_KEY.price;
+      state.twinKeys = (state.twinKeys || 0) + 1;
       afterPurchase();
       renderSelect();
     },
@@ -505,6 +537,20 @@ function tryEnterMap(mapId) {
     save();
     refreshHeader();
   }
+  if (map.twin) {
+    const spent = trySpendTwinKey(state, state.party);
+    if (!spent.ok) {
+      const owned = state.twinKeys || 0;
+      const have = partyOverLevelCount(state.party, TWIN_UNLOCK_LEVEL);
+      renderSelect();
+      setMapNote(spent.reason === 'level'
+        ? `双子塔要队伍里至少 ${TWIN_UNLOCK_COUNT} 只宝可梦超过 ${TWIN_UNLOCK_LEVEL} 级（现有 ${have} 只）。`
+        : `还差双子钥匙：需要 ${TWIN_KEY_COST} 个（现有 ${owned}）。可在商店花 ${TWIN_KEY.price} 金币买。`);
+      return;
+    }
+    save();
+    refreshHeader();
+  }
   openMap(mapId);
 }
 
@@ -520,7 +566,7 @@ function openMap(mapId) {
     const key = `${mapId}:${enc.id}`;
     const cleared = !!state.cleared[key];
     const trainer = enc.kind === 'trainer';
-    const lead = trainer ? enc.team[0] : enc;
+    const lead = trainer ? enc.team[0] : (enc.dual ? enc.foes[0] : enc);
     const sp = SPECIES[lead.speciesId];
     const shiny = trainer ? enc.team.some((m) => m.shiny) : enc.shiny;
     const boss = trainer ? enc.team.some((m) => m.boss) : enc.boss;
@@ -529,12 +575,22 @@ function openMap(mapId) {
     el.className = `marker ${enc.kind}${shiny ? ' shiny' : ''}${cleared ? ' cleared' : ''}`;
     el.style.left = `${enc.x}%`;
     el.style.top = `${enc.y}%`;
-    const who = enc.squad ? '小队挑战' : trainer ? `训练家 ${enc.trainerName}` : '野生';
-    const detail = trainer ? `${enc.team.length}只` : `${sp.name} Lv.${enc.level}`;
+    const who = enc.dual
+      ? '双打挑战'
+      : enc.squad
+        ? '小队挑战'
+        : trainer
+          ? `训练家 ${enc.trainerName}`
+          : '野生';
+    const detail = enc.dual
+      ? enc.foes.map((f) => SPECIES[f.speciesId].name).join(' & ')
+      : trainer
+        ? `${enc.team.length}只`
+        : `${sp.name} Lv.${enc.level}`;
     el.innerHTML = `
       <img src="${spriteUrl(sp.sprite)}" alt="" />
       <div class="label">
-        ${who}<br/>${detail}
+        ${who}<br/>${detail}${enc.dual ? `<br/>Lv.${enc.level}` : ''}
         ${boss ? '<br/><span class="tag boss">头目</span>' : ''}
         ${shiny ? '<span class="tag shiny">闪光</span>' : ''}
         ${sp.mega ? '<span class="tag mega">超级</span>' : ''}
@@ -558,6 +614,16 @@ function prepareEncounter(enc) {
       activeFoe: { ...foeTeam[0] },
     };
   }
+  if (enc.dual) {
+    const foes = enc.foes.map((m) => ({ ...m, hp: m.maxHp }));
+    return {
+      ...enc,
+      foes,
+      activeFoe: { ...foes[0] },
+      foeTeam: null,
+      foeIndex: 0,
+    };
+  }
   const foe = { ...enc.pokemon, hp: enc.pokemon.maxHp };
   return { ...enc, activeFoe: foe, foeTeam: null, foeIndex: 0 };
 }
@@ -565,6 +631,10 @@ function prepareEncounter(enc) {
 function foeIntro(enc) {
   if (enc.kind === 'trainer') {
     return `对手：训练家 ${enc.trainerName}（${enc.foeTeam.length}只）`;
+  }
+  if (enc.dual) {
+    const names = enc.foes.map((f) => `${SPECIES[f.speciesId].name} Lv.${enc.level}`).join(' & ');
+    return `双打对手：${names}（头目）。请选出 2 只宝可梦同时出战。`;
   }
   const sp = SPECIES[enc.speciesId];
   const tags = `${enc.boss ? '（头目）' : ''}${enc.shiny ? '（闪光）' : ''}${sp.mega ? '（超级进化）' : ''}`;
@@ -576,23 +646,106 @@ function foeIntro(enc) {
 }
 
 function startPick(enc) {
-  pickMode = 'lead';
   pendingEncounter = prepareEncounter(enc);
-  $('pick-title').textContent = '选择出战宝可梦';
   $('btn-cancel-pick').classList.remove('hidden');
   $('btn-cancel-pick').textContent = '取消';
   $('pick-foe-info').textContent = foeIntro(pendingEncounter);
+  if (pendingEncounter.dual) {
+    pickMode = 'dual-lead';
+    dualPickUids = [];
+    renderDualLeadPick();
+    showScreen('pick');
+    return;
+  }
+  pickMode = 'lead';
+  $('pick-title').textContent = '选择出战宝可梦';
   renderParty($('pick-party'), true, (mon) => startBattle(mon), activeParty(state.party), { onlyConscious: true });
   showScreen('pick');
 }
 
+function renderDualLeadPick() {
+  $('pick-title').textContent = `选择出战宝可梦（${dualPickUids.length}/2）`;
+  const party = activeParty(state.party).filter((mon) => mon.hp > 0);
+  const container = $('pick-party');
+  container.innerHTML = '';
+  for (const mon of party) {
+    const sp = SPECIES[mon.speciesId];
+    const card = document.createElement('button');
+    card.type = 'button';
+    const selected = dualPickUids.includes(mon.uid);
+    card.className = `party-card selectable${selected ? ' selected' : ''}${mon.shiny ? ' shiny' : ''}`;
+    const order = dualPickUids.indexOf(mon.uid);
+    card.innerHTML = `
+      <div class="sprite-frame"><img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" /></div>
+      <div class="body">
+        <strong>${sp.name}${order >= 0 ? ` · #${order + 1}` : ''}</strong>
+        <div>Lv.${mon.level} · HP ${mon.hp}/${mon.maxHp}</div>
+        <div>攻${mon.atk} 防${mon.def} 速${mon.spd}</div>
+        <div class="tags">
+          <span class="tag type">${typeLabel(sp.type)}</span>
+          ${selected ? '<span class="tag battle">已选</span>' : ''}
+          ${mon.shiny ? '<span class="tag shiny">闪光</span>' : ''}
+          ${mon.boss ? '<span class="tag boss">头目</span>' : ''}
+        </div>
+      </div>
+    `;
+    card.addEventListener('click', () => toggleDualLead(mon));
+    container.appendChild(card);
+  }
+}
+
+function toggleDualLead(mon) {
+  const i = dualPickUids.indexOf(mon.uid);
+  if (i >= 0) dualPickUids.splice(i, 1);
+  else if (dualPickUids.length < 2) dualPickUids.push(mon.uid);
+  if (dualPickUids.length === 2) {
+    const party = activeParty(state.party);
+    const mons = dualPickUids.map((uid) => party.find((p) => p.uid === uid)).filter(Boolean);
+    if (mons.length === 2) {
+      startDualBattle(mons);
+      return;
+    }
+  }
+  renderDualLeadPick();
+}
+
+function startDualBattle(playerMons) {
+  const players = playerMons.map((mon) => ({ ...mon }));
+  const foes = pendingEncounter.foes.map((mon) => ({ ...mon, hp: mon.maxHp }));
+  pendingEncounter.foes = foes.map((mon) => ({ ...mon }));
+  battle = {
+    dual: true,
+    players,
+    foes,
+    playerUids: playerMons.map((mon) => mon.uid),
+    player: players[0],
+    foe: foes[0],
+    playerUid: playerMons[0].uid,
+    allies: null,
+  };
+  renderBattle();
+  $('battle-log').innerHTML = '<p>双打对战开始！</p>';
+  appendLog(`${SPECIES[players[0].speciesId].name} 与 ${SPECIES[players[1].speciesId].name} 同时出战！`);
+  playBattleBgm({
+    rift: false,
+    playerLevel: players[0].level,
+    foeLevel: Math.max(...foes.map((f) => f.level)),
+  });
+  resetAttackButton();
+  showScreen('battle');
+}
+
 function startBattle(playerMon, { freshLog = true } = {}) {
+  if (pendingEncounter?.dual && pickMode === 'switch') {
+    fillDualSlot(playerMon);
+    return;
+  }
   const player = { ...playerMon };
   const foe = { ...pendingEncounter.activeFoe };
   const allies = pendingEncounter.squad
     ? (freshLog ? createRiftAllies() : battle.allies.map((ally) => ({ ...ally })))
     : null;
-  battle = { player, foe, playerUid: playerMon.uid, allies };
+  battle = { player, foe, playerUid: playerMon.uid, allies, dual: false };
   renderBattle();
   if (freshLog) {
     $('battle-log').innerHTML = '<p>对战开始！</p>';
@@ -607,6 +760,24 @@ function startBattle(playerMon, { freshLog = true } = {}) {
   showScreen('battle');
 }
 
+function fillDualSlot(playerMon) {
+  const slot = switchSlotIndex ?? battle.players.findIndex((p) => p.hp <= 0);
+  if (slot < 0) return;
+  if (battle.playerUids.includes(playerMon.uid)) {
+    appendLog('这只已经在场上了。');
+    return;
+  }
+  battle.players[slot] = { ...playerMon };
+  battle.playerUids[slot] = playerMon.uid;
+  battle.player = battle.players[0];
+  battle.playerUid = battle.playerUids[0];
+  appendLog(`上吧，${SPECIES[playerMon.speciesId].name}！`);
+  switchSlotIndex = null;
+  renderBattle();
+  resetAttackButton();
+  showScreen('battle');
+}
+
 function renderSprite(wrapId, mon) {
   const wrap = $(wrapId);
   const sp = SPECIES[mon.speciesId];
@@ -617,31 +788,69 @@ function renderSprite(wrapId, mon) {
   }
 }
 
-function renderBattle() {
-  const { player, foe } = battle;
-  const psp = SPECIES[player.speciesId];
-  const fsp = SPECIES[foe.speciesId];
-  $('player-name').textContent = `${psp.name} Lv.${player.level}`;
-  $('foe-name').textContent = `${fsp.name} Lv.${foe.level}`;
-  const progress = pendingEncounter?.kind === 'trainer'
-    ? `<span class="tag">${pendingEncounter.foeIndex + 1}/${pendingEncounter.foeTeam.length}</span>`
-    : '';
-  $('foe-tags').innerHTML = `
-    ${progress}
-    ${foe.shiny ? '<span class="tag shiny">闪光</span>' : ''}
-    ${foe.boss ? '<span class="tag boss">头目</span>' : ''}
-    ${fsp.mega ? '<span class="tag mega">超级</span>' : ''}
-  `;
-  const skillLine = $('foe-skills');
-  if (skillLine) {
-    skillLine.textContent = fsp.moves?.length
-      ? `技能 ${fsp.moves.map((move) => move.name).join(' · ')}`
+function renderFighterSlot(side, index, mon) {
+  const suffix = index === 0 ? '' : '-1';
+  const nameId = side === 'player' ? `player-name${suffix}` : `foe-name${suffix}`;
+  const tagsId = side === 'foe' ? `foe-tags${suffix}` : null;
+  const skillsId = side === 'foe' ? `foe-skills${suffix}` : null;
+  const hpId = side === 'player' ? `player-hp${suffix}` : `foe-hp${suffix}`;
+  const wrapId = side === 'player' ? `player-sprite-wrap${suffix}` : `foe-sprite-wrap${suffix}`;
+  if (!mon) {
+    if ($(nameId)) $(nameId).textContent = '——';
+    if (tagsId && $(tagsId)) $(tagsId).innerHTML = '';
+    if (skillsId && $(skillsId)) $(skillsId).textContent = '';
+    if ($(hpId)) setHpBar(hpId, 0, 1);
+    if ($(wrapId)) {
+      $(wrapId).className = 'sprite-wrap';
+      $(wrapId).innerHTML = '';
+    }
+    return;
+  }
+  const sp = SPECIES[mon.speciesId];
+  if ($(nameId)) $(nameId).textContent = `${sp.name} Lv.${mon.level}`;
+  if (tagsId && $(tagsId)) {
+    const progress = (side === 'foe' && index === 0 && pendingEncounter?.kind === 'trainer')
+      ? `<span class="tag">${pendingEncounter.foeIndex + 1}/${pendingEncounter.foeTeam.length}</span>`
+      : '';
+    $(tagsId).innerHTML = `
+      ${progress}
+      ${mon.shiny ? '<span class="tag shiny">闪光</span>' : ''}
+      ${mon.boss ? '<span class="tag boss">头目</span>' : ''}
+      ${sp.mega ? '<span class="tag mega">超级</span>' : ''}
+    `;
+  }
+  if (skillsId && $(skillsId)) {
+    $(skillsId).textContent = sp.moves?.length
+      ? `技能 ${sp.moves.map((move) => move.name).join(' · ')}`
       : '';
   }
-  setHpBar('player-hp', player.hp, player.maxHp);
-  setHpBar('foe-hp', foe.hp, foe.maxHp);
-  renderSprite('player-sprite-wrap', player);
-  renderSprite('foe-sprite-wrap', foe);
+  setHpBar(hpId, mon.hp, mon.maxHp);
+  renderSprite(wrapId, mon);
+  if ($(wrapId)) $(wrapId).classList.toggle('fainted', mon.hp <= 0);
+}
+
+function renderBattle() {
+  const field = $('battle-field');
+  const dual = !!battle?.dual;
+  field?.classList.toggle('dual', dual);
+  for (const el of document.querySelectorAll('.dual-only')) {
+    el.classList.toggle('hidden', !dual);
+  }
+
+  if (dual) {
+    renderFighterSlot('foe', 0, battle.foes[0]);
+    renderFighterSlot('foe', 1, battle.foes[1]);
+    renderFighterSlot('player', 0, battle.players[0]);
+    renderFighterSlot('player', 1, battle.players[1]);
+    battle.player = battle.players[0];
+    battle.foe = battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+    renderAllies();
+    return;
+  }
+
+  const { player, foe } = battle;
+  renderFighterSlot('foe', 0, foe);
+  renderFighterSlot('player', 0, player);
   renderAllies();
 }
 
@@ -680,6 +889,15 @@ function appendLog(text) {
 }
 
 function syncBattleHp() {
+  if (battle?.dual) {
+    for (let i = 0; i < battle.playerUids.length; i += 1) {
+      const member = state.party.find((p) => p.uid === battle.playerUids[i]);
+      if (member) member.hp = battle.players[i].hp;
+    }
+    pendingEncounter.foes = battle.foes.map((mon) => ({ ...mon }));
+    pendingEncounter.activeFoe = { ...(battle.foes.find((f) => f.hp > 0) || battle.foes[0]) };
+    return;
+  }
   const member = state.party.find((p) => p.uid === battle.playerUid);
   if (member) member.hp = battle.player.hp;
   pendingEncounter.activeFoe = { ...battle.foe };
@@ -696,7 +914,23 @@ function refreshBattleAnimButton() {
   btn.textContent = `动画 · ${BATTLE_ANIM_LABEL[mode]}`;
 }
 
+function slotWrap(side, index) {
+  const suffix = index === 0 ? '' : '-1';
+  return $(side === 'player' ? `player-sprite-wrap${suffix}` : `foe-sprite-wrap${suffix}`);
+}
+
 function battleHitElements(line) {
+  if (battle?.dual && (line.actorIndex != null || line.targetIndex != null)) {
+    const atkSide = line.side;
+    const defSide = line.side === 'player' ? 'foe' : 'player';
+    return {
+      attackerEl: slotWrap(atkSide, line.actorIndex || 0),
+      defenderEl: slotWrap(defSide, line.targetIndex || 0),
+      attackerSpeciesId: atkSide === 'player'
+        ? battle.players[line.actorIndex || 0]?.speciesId
+        : battle.foes[line.actorIndex || 0]?.speciesId,
+    };
+  }
   const playerWrap = $('player-sprite-wrap');
   const foeWrap = $('foe-sprite-wrap');
   if (line.side === 'player') {
@@ -729,6 +963,51 @@ function battleHitElements(line) {
     defenderEl: playerWrap,
     attackerSpeciesId: battle?.foe?.speciesId,
   };
+}
+
+async function playDualTurnHits(turn) {
+  for (let i = 0; i < turn.logs.length; i += 1) {
+    const line = turn.logs[i];
+    appendLog(line.text);
+    const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
+    const stripPlayed = await playFighterFrameStrip(attackerEl, {
+      speciesId: attackerSpeciesId,
+      mode: state.battleAnim,
+    });
+    if (!stripPlayed) {
+      playHit(attackerEl, defenderEl, {
+        moveType: line.moveType,
+        typeMult: line.typeMult,
+        mode: state.battleAnim,
+      });
+    }
+    if (line.side === 'player') {
+      const foe = battle.foes[line.targetIndex];
+      if (foe) {
+        foe.hp = Math.max(0, foe.hp - line.damage);
+        renderFighterSlot('foe', line.targetIndex, foe);
+      }
+    } else {
+      const player = battle.players[line.targetIndex];
+      if (player) {
+        player.hp = Math.max(0, player.hp - line.damage);
+        renderFighterSlot('player', line.targetIndex, player);
+      }
+    }
+    syncBattleHp();
+    await wait(HP_ANIM_MS);
+    if (battle.foes.every((f) => f.hp <= 0)) {
+      await waitForContinue('两只 Boss 都倒下了！');
+      break;
+    }
+    if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+  }
+  battle.players = turn.players.map((mon) => ({ ...mon }));
+  battle.foes = turn.foes.map((mon) => ({ ...mon }));
+  battle.player = battle.players[0];
+  battle.foe = battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+  syncBattleHp();
+  renderBattle();
 }
 
 async function playTurnHits(turn, startPlayer, startFoe) {
@@ -800,7 +1079,48 @@ function grantRiftFruit(foe) {
   save();
 }
 
+function dualBackupCount() {
+  const onField = new Set(battle.playerUids || []);
+  return activeParty(state.party).filter((p) => p.hp > 0 && !onField.has(p.uid)).length;
+}
+
+function finishDualTurnOutcome(turn) {
+  if (turn.result === 'win' || turn.result === 'draw') {
+    const evolved = awardDualXp();
+    if (turn.result === 'win') {
+      appendLog('胜利！');
+      finishBattleWin(evolved);
+      return;
+    }
+    appendLog('同归于尽…你败北了。');
+    $('btn-attack').disabled = true;
+    $('btn-flee-battle').disabled = true;
+    setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
+    return;
+  }
+  if (turn.result === 'lose') {
+    appendLog('你没有可以继续对战的宝可梦了…');
+    $('btn-attack').disabled = true;
+    $('btn-flee-battle').disabled = true;
+    setTimeout(() => leaveBattle(), 900);
+    return;
+  }
+  if (turn.result === 'switch') {
+    const slot = battle.players.findIndex((p) => p.hp <= 0);
+    if (slot >= 0 && dualBackupCount() > 0) {
+      appendLog('换上下一只补位吧。');
+      openSwitchPick(slot);
+      return;
+    }
+  }
+  resetAttackButton();
+}
+
 function finishTurnOutcome(turn) {
+  if (battle?.dual) {
+    finishDualTurnOutcome(turn);
+    return;
+  }
   if (battle.foe.hp <= 0) grantRiftFruit(battle.foe);
   if (turn.result === 'switch') {
     const backup = activeParty(state.party).filter((p) => p.uid !== battle.playerUid && p.hp > 0).length;
@@ -863,14 +1183,21 @@ async function onAttack() {
   $('btn-attack').disabled = true;
   $('btn-flee-battle').disabled = true;
 
-  const startPlayer = { ...battle.player };
-  const startFoe = { ...battle.foe };
-  const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
-  const turn = startAllies
-    ? resolveSquadTurn(startPlayer, startAllies, startFoe)
-    : resolveTurn(startPlayer, startFoe);
-
   try {
+    if (battle.dual) {
+      const startPlayers = battle.players.map((mon) => ({ ...mon }));
+      const startFoes = battle.foes.map((mon) => ({ ...mon }));
+      const turn = resolveDualTurn(startPlayers, startFoes);
+      await playDualTurnHits(turn);
+      finishTurnOutcome(turn);
+      return;
+    }
+    const startPlayer = { ...battle.player };
+    const startFoe = { ...battle.foe };
+    const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
+    const turn = startAllies
+      ? resolveSquadTurn(startPlayer, startAllies, startFoe)
+      : resolveTurn(startPlayer, startFoe);
     await playTurnHits(turn, startPlayer, startFoe);
     finishTurnOutcome(turn);
   } catch (err) {
@@ -894,6 +1221,25 @@ function awardXp(foe) {
   return xpLogs.some((line) => line.includes('进化'));
 }
 
+function awardDualXp() {
+  let evolved = false;
+  const totalLevel = battle.foes.reduce((sum, foe) => sum + foe.level, 0);
+  const dummy = { level: Math.floor(totalLevel / Math.max(1, battle.foes.length)), boss: true };
+  for (let i = 0; i < battle.playerUids.length; i += 1) {
+    const fighter = state.party.find((p) => p.uid === battle.playerUids[i]);
+    if (!fighter) continue;
+    const wasFainted = fighter.hp <= 0 || battle.players[i].hp <= 0;
+    const amount = xpReward(dummy, { trainer: false });
+    const xpLogs = gainExperience(fighter, amount);
+    if (wasFainted) fighter.hp = 0;
+    for (const line of xpLogs) appendLog(line);
+    if (xpLogs.some((line) => line.includes('进化'))) evolved = true;
+    if (!wasFainted) battle.players[i] = { ...fighter };
+  }
+  renderBattle();
+  return evolved;
+}
+
 function sendNextFoe() {
   pendingEncounter.foeIndex += 1;
   const next = pendingEncounter.foeTeam[pendingEncounter.foeIndex];
@@ -912,10 +1258,20 @@ function sendNextFoe() {
   }
 }
 
-function openSwitchPick() {
+function openSwitchPick(slotIndex = null) {
   pickMode = 'switch';
-  $('pick-title').textContent = '选择下一只';
+  switchSlotIndex = slotIndex;
+  $('pick-title').textContent = battle?.dual ? '选择补位宝可梦' : '选择下一只';
   $('btn-cancel-pick').classList.add('hidden');
+  if (battle?.dual) {
+    const living = battle.foes.filter((f) => f.hp > 0).map((f) => SPECIES[f.speciesId].name).join(' & ');
+    $('pick-foe-info').textContent = `对手仍在：${living}`;
+    const onField = new Set(battle.playerUids);
+    const choices = activeParty(state.party).filter((p) => p.hp > 0 && !onField.has(p.uid));
+    renderParty($('pick-party'), true, (mon) => startBattle(mon, { freshLog: false }), choices, { onlyConscious: true });
+    showScreen('pick');
+    return;
+  }
   const foe = battle.foe;
   const sp = SPECIES[foe.speciesId];
   $('pick-foe-info').textContent = `对手：${sp.name} Lv.${foe.level} · HP ${foe.hp}/${foe.maxHp}`;
@@ -926,9 +1282,19 @@ function openSwitchPick() {
 function openCatchPick() {
   pickMode = 'catch';
   playExploreBgm();
-  $('pick-title').textContent = '选择要捕捉的宝可梦';
   $('btn-cancel-pick').classList.remove('hidden');
   $('btn-cancel-pick').textContent = '放弃捕捉';
+  if (pendingEncounter.dual) {
+    $('pick-title').textContent = '选择要捕捉的 Boss（只能抓 1 只）';
+    $('pick-foe-info').textContent = '双打胜利！从倒下的两只里选一只捕捉。';
+    renderParty($('pick-party'), true, (mon) => {
+      pendingEncounter.activeFoe = mon;
+      enterCatch(pendingEncounter);
+    }, pendingEncounter.foes);
+    showScreen('pick');
+    return;
+  }
+  $('pick-title').textContent = '选择要捕捉的宝可梦';
   $('pick-foe-info').textContent = `训练家 ${pendingEncounter.trainerName} 倒下了。选一只捕捉。`;
   renderParty($('pick-party'), true, (mon) => {
     pendingEncounter.activeFoe = mon;
@@ -955,7 +1321,7 @@ function finishBattleWin(evolved) {
   for (const p of state.party) p.hp = p.maxHp;
   save();
   setTimeout(() => {
-    if (enc.kind === 'trainer') openCatchPick();
+    if (enc.kind === 'trainer' || enc.dual) openCatchPick();
     else enterCatch(enc);
   }, evolved ? 1400 : 900);
 }
@@ -1123,7 +1489,7 @@ function settleThrow(hit) {
 }
 
 function markCleared() {
-  if (pendingEncounter?.squad) return;
+  if (pendingEncounter?.squad || pendingEncounter?.dual) return;
   state.cleared[`${currentMapId}:${pendingEncounter.id}`] = true;
 }
 
@@ -1192,7 +1558,7 @@ $('btn-back-select').addEventListener('click', () => {
 });
 $('btn-cancel-pick').addEventListener('click', () => {
   if (pickMode === 'catch') skipCatch();
-  else if (pickMode === 'lead') openMap(currentMapId);
+  else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
 });
 $('btn-attack').addEventListener('click', onAttack);
 $('btn-flee-battle').addEventListener('click', () => {

@@ -23,6 +23,7 @@
     <header class="top-bar">
       <h1>宝可梦对战捕捉</h1>
       <div class="status">
+        <button id="btn-party-style" type="button">显示</button>
         <button id="btn-shop" type="button">商店</button>
         <span id="coin-display">金币 300</span>
         <span id="fruit-display">异次元果 0</span>
@@ -43,12 +44,10 @@
           </div>
         </div>
       </div>
-      <div class="panel split-pane">
+      <div class="panel split-pane party-pane" id="party-pane">
         <h2 class="party-head">我的宝可梦 <span id="party-count">1/99</span></h2>
-        <div class="pane-scroll">
-          <p class="hint">用上移、下移排序。前 6 只会标成出场，只有它们能参加对战。</p>
-          <div id="party-list" class="party-list"></div>
-        </div>
+        <p class="hint party-hint">点卡排序。前 6 出场；收回进背包，上场回前 6。</p>
+        <div id="party-list" class="party-list"></div>
       </div>
     </section>
 
@@ -123,6 +122,17 @@
         <button id="btn-skip-catch" type="button">放弃捕捉</button>
       </div>
     </section>
+  </div>
+  <div id="party-style-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="party-style-title">
+    <div class="panel shop-panel">
+      <h2 id="party-style-title">队伍显示</h2>
+      <div id="party-style-options" class="party-style-options">
+        <button type="button" data-party-style="capsule">胶囊条</button>
+        <button type="button" data-party-style="tile">精灵球瓷砖</button>
+        <button type="button" data-party-style="split">双段横轨</button>
+      </div>
+      <button id="btn-close-party-style" type="button">关闭</button>
+    </div>
   </div>
   <div id="shop-modal" class="shop-modal hidden">
     <div class="shop-dialog panel">

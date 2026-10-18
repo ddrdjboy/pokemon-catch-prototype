@@ -125,8 +125,11 @@ function reviveTargets() {
     .map((mon, index) => ({ mon, index, uid: battle.dual ? battle.playerUids[index] : battle.playerUid, onField: true }))
     .filter(({ mon }) => mon && mon.hp <= 0);
   if (field.length) return field;
-  return state.party
-    .filter((p) => p.hp <= 0)
+  const onFieldUids = new Set(
+    battle.dual ? (battle.playerUids || []) : [battle.playerUid],
+  );
+  return activeParty(state.party)
+    .filter((p) => p.hp <= 0 && !onFieldUids.has(p.uid))
     .map((mon) => ({ mon, index: -1, uid: mon.uid, onField: false }));
 }
 

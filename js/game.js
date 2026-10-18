@@ -2015,7 +2015,8 @@ $('btn-back-select').addEventListener('click', () => {
 $('btn-cancel-pick').addEventListener('click', () => {
   if (pickMode === 'catch') skipCatch();
   else if (pickMode === 'lead' || pickMode === 'dual-lead') {
-    if (mazeRun) returnToMazeScreen();
+    // Full leaveBattle/catch → maze resume is Task 4; only cancel maze picks here.
+    if (pendingEncounter?.maze && mazeRun) returnToMazeScreen();
     else openMap(currentMapId);
   }
 });

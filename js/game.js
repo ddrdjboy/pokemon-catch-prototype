@@ -703,6 +703,7 @@ function buildPartyPopover(mon, index) {
     });
     pop.appendChild(btn);
   };
+  add('详情', false, '', () => openPartyDetail(mon));
   add('左移', !canShiftParty(mon.uid, -1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, -1)));
   add('右移', !canShiftParty(mon.uid, 1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, 1)));
   if (active) {

@@ -207,7 +207,7 @@ function setBattleActionBusy(busy) {
   $('btn-attack').disabled = busy;
   $('btn-flee-battle').disabled = busy;
   if (busy) {
-    $('btn-item').disabled = true;
+    $('btn-item')?.toggleAttribute('disabled', true);
     closeItemPanel();
   } else {
     updateItemButton();
@@ -230,7 +230,7 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
-    $('btn-item').disabled = true;
+    $('btn-item')?.toggleAttribute('disabled', true);
     closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
@@ -854,8 +854,10 @@ function mazeViewSize() {
 }
 
 const MAZE_HELP_TEXT = '点击角色相邻格子移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
 
 let mazeToastTimer = null;
+let appToastTimer = null;
 
 function mazePlayerSprite() {
   const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
@@ -872,6 +874,18 @@ function showMazeToast(text, ms = 4200) {
   mazeToastTimer = setTimeout(() => {
     el.classList.add('hidden');
     mazeToastTimer = null;
+  }, ms);
+}
+
+function showAppToast(text, ms = 4000) {
+  const el = $('app-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    appToastTimer = null;
   }, ms);
 }
 
@@ -2246,6 +2260,9 @@ $('btn-maze-exit').addEventListener('click', () => {
 $('btn-maze-info')?.addEventListener('click', () => {
   showMazeToast(MAZE_HELP_TEXT);
 });
+$('btn-party-info')?.addEventListener('click', () => {
+  showAppToast(PARTY_HELP_TEXT);
+});
 window.addEventListener('keydown', (e) => {
   if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;
   const dirs = {
@@ -2259,7 +2276,7 @@ window.addEventListener('keydown', (e) => {
   tryMazeStep(d[0], d[1]);
 });
 $('btn-attack').addEventListener('click', onAttack);
-$('btn-item').addEventListener('click', () => {
+$('btn-item')?.addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   if ($('item-panel').classList.contains('hidden')) openItemPanel();
   else closeItemPanel();

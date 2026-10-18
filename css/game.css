@@ -1425,11 +1425,45 @@ button.danger {
 .maze-tile.stairs { background-image: url('../assets/maze/stairs.png'); }
 .maze-tile.adjacent {
   cursor: pointer;
-  box-shadow: inset 0 0 0 2px rgba(125, 255, 179, 0.55);
+}
+.maze-tile.adjacent::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+/* Green direction arrows on the four walkable neighbor tiles */
+.maze-tile.adjacent-n::after {
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 16px solid #7dffb3;
+}
+.maze-tile.adjacent-s::after {
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 16px solid #7dffb3;
+}
+.maze-tile.adjacent-w::after {
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-right: 16px solid #7dffb3;
+}
+.maze-tile.adjacent-e::after {
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 16px solid #7dffb3;
+}
+.maze-tile.adjacent:hover::after {
+  filter: drop-shadow(0 0 4px rgba(125, 255, 179, 0.9));
 }
 .maze-tile.adjacent:hover {
-  box-shadow: inset 0 0 0 2px rgba(125, 255, 179, 0.95);
-  filter: brightness(1.12);
+  filter: brightness(1.08);
 }
 .maze-entity {
   position: absolute;

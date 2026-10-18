@@ -1524,18 +1524,28 @@ button.danger {
   height: 1.75rem;
   padding: 0;
   border-radius: 999px;
-  border: 1.5px solid #9b7ec8;
-  background: #2a1c3a;
-  color: #e8d9ff;
-  font: 700 0.95rem/1 Georgia, 'Times New Roman', serif;
-  font-style: italic;
+  border: 1.5px solid #C7C7CC;
+  background: transparent;
+  color: #E5E5EA;
+  font: 600 0.95rem/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-style: normal;
+  letter-spacing: 0;
   cursor: pointer;
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
 }
 .maze-info-btn:hover,
 .maze-info-btn:focus-visible {
-  background: #3d2a55;
+  border-color: #F2F2F7;
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.08);
   outline: none;
+}
+.maze-info-btn:active {
+  opacity: 0.7;
 }
 .maze-viewport {
   --maze-tile: 56px;

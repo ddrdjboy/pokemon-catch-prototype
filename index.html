@@ -92,20 +92,13 @@
         <div class="maze-top">
           <button id="btn-maze-exit" type="button">← 退出灵堂</button>
           <h2 id="maze-title">灵堂 · 第 1 层</h2>
+          <button id="btn-maze-info" type="button" class="maze-info-btn" aria-label="玩法说明" title="玩法说明">i</button>
         </div>
         <div id="maze-viewport" class="maze-viewport" aria-label="迷宫卷轴">
           <div id="maze-world" class="maze-world"></div>
           <div class="maze-crosshair" aria-hidden="true"></div>
+          <div id="maze-toast" class="maze-toast hidden" role="status"></div>
         </div>
-        <div class="maze-pad">
-          <button type="button" data-maze-dir="0,-1">↑</button>
-          <div class="maze-pad-mid">
-            <button type="button" data-maze-dir="-1,0">←</button>
-            <button type="button" data-maze-dir="1,0">→</button>
-          </div>
-          <button type="button" data-maze-dir="0,1">↓</button>
-        </div>
-        <p class="hint">方向键 / WASD 移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。</p>
       </div>
     </section>
 

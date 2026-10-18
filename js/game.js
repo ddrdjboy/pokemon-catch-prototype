@@ -344,7 +344,7 @@ function showScreen(name) {
 }
 
 function refreshHeader() {
-  $('coin-display').textContent = `🪙 ${state.coins}`;
+  $('coin-display').innerHTML = `<span class="coin-icon" aria-hidden="true"></span>${state.coins}`;
   $('fruit-display').textContent = `🍇 ${state.riftFruit || 0}`;
   const twinEl = $('twin-key-display');
   if (twinEl) twinEl.textContent = `🔑 ${state.twinKeys || 0}`;

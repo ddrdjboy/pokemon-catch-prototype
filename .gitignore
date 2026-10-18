@@ -3,3 +3,5 @@ node_modules/
 .playwright-mcp/
 .superpowers/
 assets/pixel/
+
+.worktrees

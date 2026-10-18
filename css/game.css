@@ -1341,6 +1341,16 @@ button.danger {
     padding: 10px 14px;
   }
 
+  .maze-info-btn {
+    width: 1.125rem;
+    height: 1.125rem;
+    min-width: 1.125rem;
+    min-height: 1.125rem;
+    max-width: 1.125rem;
+    max-height: 1.125rem;
+    padding: 0;
+  }
+
   .panel {
     padding: 12px;
     border-radius: 12px;
@@ -1520,18 +1530,24 @@ button.danger {
 }
 .maze-top #maze-title { margin: 0; }
 .maze-info-btn {
-  width: 1.75rem;
-  height: 1.75rem;
+  box-sizing: border-box;
+  width: 1.125rem;
+  height: 1.125rem;
+  min-width: 1.125rem;
+  min-height: 1.125rem;
+  max-width: 1.125rem;
+  max-height: 1.125rem;
+  aspect-ratio: 1;
   padding: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   border: 1.5px solid #C7C7CC;
   background: transparent;
   color: #E5E5EA;
-  font: 600 0.95rem/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font: 600 0.68rem/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
   font-style: normal;
   letter-spacing: 0;
   cursor: pointer;
-  flex: 0 0 auto;
+  flex: 0 0 1.125rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -867,8 +867,17 @@ function renderMaze() {
     for (let x = 0; x < w; x += 1) {
       const kind = mazeRun.grid[y][x];
       const cell = document.createElement('div');
-      const adjacent = Math.abs(x - px) + Math.abs(y - py) === 1 && kind !== 'wall';
-      cell.className = `maze-tile ${kind}${adjacent ? ' adjacent' : ''}`;
+      const dx = x - px;
+      const dy = y - py;
+      const adjacent = Math.abs(dx) + Math.abs(dy) === 1 && kind !== 'wall';
+      let dirClass = '';
+      if (adjacent) {
+        if (dy === -1) dirClass = ' adjacent-n';
+        else if (dy === 1) dirClass = ' adjacent-s';
+        else if (dx === -1) dirClass = ' adjacent-w';
+        else if (dx === 1) dirClass = ' adjacent-e';
+      }
+      cell.className = `maze-tile ${kind}${adjacent ? ` adjacent${dirClass}` : ''}`;
       cell.style.left = `${x * tile}px`;
       cell.style.top = `${y * tile}px`;
       cell.style.width = `${tile}px`;

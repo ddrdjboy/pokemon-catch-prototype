@@ -71,6 +71,7 @@ import {
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
 } from './maze.js';
+import { partyIndividualView } from './party-detail.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
@@ -555,7 +556,7 @@ function renderDex() {
   }
 }
 
-function renderDexDetail(detail) {
+function renderDexDetail(detail, mon = null) {
   const root = $('dex-detail');
   const catchPct = Math.round((detail.catchRate ?? 0) * 100);
   const moveLines = detail.moves
@@ -565,12 +566,25 @@ function renderDexDetail(detail) {
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`
     : '进化：无';
   const canAnim = hasFighterFrames(detail.id);
+  const individual = partyIndividualView(mon);
+  const individualHtml = individual
+    ? `<div class="individual">
+        <div>个体：Lv.${individual.level} · HP ${individual.hpText}</div>
+        <div>能力：攻 ${individual.atk} · 防 ${individual.def} · 速 ${individual.spd}</div>
+        <div>经验：${individual.expText}</div>
+        <div class="meta">
+          ${individual.shiny ? '<span class="tag shiny">闪光</span>' : ''}
+          ${individual.fainted ? '<span class="tag">倒地</span>' : ''}
+        </div>
+      </div>`
+    : '';
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
     <div class="dex-hero-wrap">
       <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
     </div>
     ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
+    ${individualHtml}
     <div class="meta">
       <span class="tag type">${typeLabel(detail.type)}</span>
       ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
@@ -594,11 +608,16 @@ function renderDexDetail(detail) {
   }
 }
 
-function openDexDetail(speciesId) {
+function openDexDetail(speciesId, mon = null) {
   const detail = getDexDetail(speciesId, SPECIES);
   if (!detail) return;
-  renderDexDetail(detail);
+  renderDexDetail(detail, mon);
   $('dex-detail-modal').classList.remove('hidden');
+}
+
+function openPartyDetail(mon) {
+  closePartyPopover();
+  openDexDetail(mon.speciesId, mon);
 }
 
 function closeDexDetail() {

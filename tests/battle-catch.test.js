@@ -28,6 +28,12 @@ import {
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
 import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
+import {
+  generateMazeFloor,
+  createMazeRun,
+  stepMaze,
+  SPIRIT_HALL_BOSS_BY_FLOOR,
+} from '../js/maze.js';
 
 let passed = 0;
 let failed = 0;
@@ -611,6 +617,53 @@ assert(
   dualItem.players.some((p, i) => p.hp < dualItemPlayers[i].hp),
   'foes still attack on dual item turn',
 );
+
+console.log('spirit hall maze');
+const floor1 = generateMazeFloor({ floor: 1, rng: () => 0.42 });
+assert(floor1.grid.length >= 15 && floor1.grid[0].length >= 15, 'grid is at least 15x15');
+const flat = floor1.grid.flat();
+assert(flat.includes('floor') && flat.includes('stairs') && flat.includes('wall'), 'has wall/floor/stairs');
+function flood(grid, sx, sy) {
+  const h = grid.length, w = grid[0].length;
+  const seen = new Set();
+  const q = [[sx, sy]];
+  seen.add(`${sx},${sy}`);
+  while (q.length) {
+    const [x, y] = q.pop();
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      if (grid[ny][nx] === 'wall') continue;
+      const k = `${nx},${ny}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      q.push([nx, ny]);
+    }
+  }
+  return seen;
+}
+const reach = flood(floor1.grid, floor1.spawn.x, floor1.spawn.y);
+assert(reach.has(`${floor1.stairs.x},${floor1.stairs.y}`), 'spawn reaches stairs');
+assert(floor1.roamers.length >= 6 && floor1.roamers.length <= 10, '6-10 roamers');
+
+const run = createMazeRun({ floor: 1, rng: () => 0.3 });
+const wallStep = (() => {
+  const r = createMazeRun({ floor: 1, rng: () => 0.11 });
+  const { x, y } = r.player;
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const tx = x + dx, ty = y + dy;
+    if (r.grid[ty]?.[tx] === 'wall') {
+      const out = stepMaze(r, dx, dy);
+      return out.event === null && out.run.player.x === x && out.run.player.y === y;
+    }
+  }
+  return true;
+})();
+assert(wallStep, 'cannot walk into walls');
+
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].speciesId === 'eternatus' && SPIRIT_HALL_BOSS_BY_FLOOR[1].level === 225, 'floor1 boss');
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].speciesId === 'xerneas' && SPIRIT_HALL_BOSS_BY_FLOOR[2].level === 250, 'floor2 boss');
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].speciesId === 'zygarde' && SPIRIT_HALL_BOSS_BY_FLOOR[3].level === 300, 'floor3 boss');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

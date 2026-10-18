@@ -24,10 +24,21 @@ import {
   partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
   TWIN_UNLOCK_LEVEL, TWIN_UNLOCK_COUNT, TWIN_KEY_COST, TWIN_KEY, TWIN_BOSS_LEVEL,
+  canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
 import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
+import {
+  generateMazeFloor,
+  createMazeRun,
+  stepMaze,
+  removeRoamer,
+  markFloorBossDefeated,
+  advanceMazeFloor,
+  buildFloorBossEncounter,
+  SPIRIT_HALL_BOSS_BY_FLOOR,
+} from '../js/maze.js';
 
 let passed = 0;
 let failed = 0;
@@ -305,7 +316,7 @@ for (const id of regionIds) {
     known.add(sid);
   }
 }
-assert(Object.keys(MAPS).length === 21, '21 maps total');
+assert(Object.keys(MAPS).length === 22, '22 maps total');
 
 console.log('rift raid');
 assert(SPECIES.mega_rayquaza?.name === '超级裂空座' && SPECIES.mega_rayquaza.mega, 'mega rayquaza');
@@ -388,6 +399,17 @@ const dualFoes = heroes.foes.map((f) => ({ ...f }));
 const dualTurn = resolveDualTurn(dualPlayers, dualFoes, () => 0);
 assert(dualTurn.logs.length >= 2, 'dual turn has multiple actions');
 assert(dualTurn.players.length === 2 && dualTurn.foes.length === 2, 'dual turn keeps both sides');
+
+console.log('spirit hall unlock');
+assert(SPECIES.eternatus?.name === '伊裴尔达尔', 'eternatus species');
+assert(SPECIES.xerneas?.name === '哲尔尼亚斯', 'xerneas species');
+assert(SPECIES.zygarde?.name === '基格尔德', 'zygarde species');
+assert(MAPS.spirit_hall?.spiritHall === true && MAPS.spirit_hall.name === '灵堂', 'spirit hall map');
+assert(canEnterSpiritHall({ twinCleared: false }).ok === false, 'locked without twin clear');
+assert(canEnterSpiritHall({ twinCleared: true }).ok === true, 'open after twin clear');
+const init = initialPlayerState();
+assert(init.twinCleared === false, 'fresh save not cleared');
+assert(SPIRIT_HALL_BOSS_LEVELS[1] === 225 && SPIRIT_HALL_BOSS_LEVELS[2] === 250 && SPIRIT_HALL_BOSS_LEVELS[3] === 300, 'boss levels table');
 
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);
@@ -611,6 +633,79 @@ assert(
   dualItem.players.some((p, i) => p.hp < dualItemPlayers[i].hp),
   'foes still attack on dual item turn',
 );
+
+console.log('spirit hall maze');
+const floor1 = generateMazeFloor({ floor: 1, rng: () => 0.42 });
+assert(floor1.grid.length >= 15 && floor1.grid[0].length >= 15, 'grid is at least 15x15');
+const flat = floor1.grid.flat();
+assert(flat.includes('floor') && flat.includes('stairs') && flat.includes('wall'), 'has wall/floor/stairs');
+function flood(grid, sx, sy) {
+  const h = grid.length, w = grid[0].length;
+  const seen = new Set();
+  const q = [[sx, sy]];
+  seen.add(`${sx},${sy}`);
+  while (q.length) {
+    const [x, y] = q.pop();
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      if (grid[ny][nx] === 'wall') continue;
+      const k = `${nx},${ny}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      q.push([nx, ny]);
+    }
+  }
+  return seen;
+}
+const reach = flood(floor1.grid, floor1.spawn.x, floor1.spawn.y);
+assert(reach.has(`${floor1.stairs.x},${floor1.stairs.y}`), 'spawn reaches stairs');
+assert(floor1.roamers.length >= 6 && floor1.roamers.length <= 10, '6-10 roamers');
+
+const run = createMazeRun({ floor: 1, rng: () => 0.3 });
+const wallStep = (() => {
+  const r = createMazeRun({ floor: 1, rng: () => 0.11 });
+  const { x, y } = r.player;
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const tx = x + dx, ty = y + dy;
+    if (r.grid[ty]?.[tx] === 'wall') {
+      const out = stepMaze(r, dx, dy);
+      return out.event === null && out.run.player.x === x && out.run.player.y === y;
+    }
+  }
+  return true;
+})();
+assert(wallStep, 'cannot walk into walls');
+
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].speciesId === 'eternatus' && SPIRIT_HALL_BOSS_BY_FLOOR[1].level === 225, 'floor1 boss');
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].speciesId === 'xerneas' && SPIRIT_HALL_BOSS_BY_FLOOR[2].level === 250, 'floor2 boss');
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].speciesId === 'zygarde' && SPIRIT_HALL_BOSS_BY_FLOOR[3].level === 300, 'floor3 boss');
+
+console.log('spirit hall flow helpers');
+{
+  let run = createMazeRun({ floor: 1, rng: () => 0.5 });
+  const firstId = run.roamers[0]?.id;
+  if (firstId) {
+    run = removeRoamer(run, firstId);
+    assert(!run.roamers.find((r) => r.id === firstId), 'remove roamer works');
+  }
+  run = markFloorBossDefeated(run);
+  assert(run.floorBossDefeated, 'boss flagged');
+  const f2 = advanceMazeFloor(run, () => 0.2);
+  assert(f2 && f2.floor === 2 && f2.floorBossDefeated === false, 'advance to floor 2');
+  const f3 = advanceMazeFloor({ ...f2, floor: 2 }, () => 0.2);
+  assert(f3 && f3.floor === 3, 'floor 3');
+  assert(advanceMazeFloor({ ...f3, floor: 3 }) === null, 'no floor 4');
+
+  const bossEnc = buildFloorBossEncounter(3);
+  assert(bossEnc.speciesId === 'zygarde' && bossEnc.level === 300 && bossEnc.boss && bossEnc.shiny, 'zygarde enc');
+
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].level === SPIRIT_HALL_BOSS_LEVELS[1], 'floor1 level sync');
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].level === SPIRIT_HALL_BOSS_LEVELS[2], 'floor2 level sync');
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].level === SPIRIT_HALL_BOSS_LEVELS[3], 'floor3 level sync');
+
+  assert(MAPS.spirit_hall.encounters.length === 0, 'spirit hall has no marker encounters');
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

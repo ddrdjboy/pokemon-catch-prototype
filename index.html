@@ -87,6 +87,25 @@
       </div>
     </section>
 
+    <section id="screen-maze" class="screen hidden">
+      <div class="panel maze-panel">
+        <div class="maze-top">
+          <button id="btn-maze-exit" type="button">← 退出灵堂</button>
+          <h2 id="maze-title">灵堂 · 第 1 层</h2>
+        </div>
+        <div id="maze-grid" class="maze-grid" aria-label="迷宫"></div>
+        <div class="maze-pad">
+          <button type="button" data-maze-dir="0,-1">↑</button>
+          <div class="maze-pad-mid">
+            <button type="button" data-maze-dir="-1,0">←</button>
+            <button type="button" data-maze-dir="1,0">→</button>
+          </div>
+          <button type="button" data-maze-dir="0,1">↓</button>
+        </div>
+        <p class="hint">方向键 / WASD 移动。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。</p>
+      </div>
+    </section>
+
     <!-- Screen: pick fighter -->
     <section id="screen-pick" class="screen hidden">
       <div class="panel">

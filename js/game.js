@@ -754,10 +754,42 @@ function endMazeRun({ message } = {}) {
   if (message) setMapNote(message);
 }
 
-function returnToMazeScreen() {
+function inSpiritHall() {
+  return !!mazeRun && currentMapId === 'spirit_hall';
+}
+
+function returnAfterMazeBattle() {
+  if (!inSpiritHall()) {
+    openMap(currentMapId);
+    return;
+  }
   renderMaze();
   showScreen('maze');
   playExploreBgm();
+}
+
+function failMazeRun() {
+  endMazeRun({ message: '队伍全灭，已离开灵堂。下次从第 1 层重新开始。' });
+}
+
+function resumeAfterMazeCatch() {
+  if (!inSpiritHall()) {
+    openMap(currentMapId);
+    return;
+  }
+  const tag = pendingEncounter?.maze;
+  if (tag?.kind === 'roamer') {
+    mazeRun = removeRoamer(mazeRun, tag.roamerId);
+    returnAfterMazeBattle();
+    return;
+  }
+  if (tag?.kind === 'boss') {
+    mazeRun = markFloorBossDefeated(mazeRun);
+    afterFloorBossCleared(); // may call endMazeRun on floor 3
+    if (mazeRun) returnAfterMazeBattle();
+    return;
+  }
+  returnAfterMazeBattle();
 }
 
 function renderMaze() {
@@ -1759,6 +1791,10 @@ function leaveBattle() {
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
+  if (inSpiritHall()) {
+    failMazeRun();
+    return;
+  }
   openMap(currentMapId);
 }
 
@@ -1967,7 +2003,7 @@ function claimPokemon(foe) {
       catchCtrl.destroy();
       catchCtrl = null;
     }
-    openMap(currentMapId);
+    resumeAfterMazeCatch();
   }, 1000);
 }
 
@@ -1978,7 +2014,7 @@ function skipCatch() {
     catchCtrl.destroy();
     catchCtrl = null;
   }
-  openMap(currentMapId);
+  resumeAfterMazeCatch();
 }
 
 function refreshAllEncounters() {
@@ -2014,11 +2050,7 @@ $('btn-back-select').addEventListener('click', () => {
 });
 $('btn-cancel-pick').addEventListener('click', () => {
   if (pickMode === 'catch') skipCatch();
-  else if (pickMode === 'lead' || pickMode === 'dual-lead') {
-    // Full leaveBattle/catch → maze resume is Task 4; only cancel maze picks here.
-    if (pendingEncounter?.maze && mazeRun) returnToMazeScreen();
-    else openMap(currentMapId);
-  }
+  else returnAfterMazeBattle();
 });
 $('btn-maze-exit').addEventListener('click', () => {
   if (!mazeRun) return;

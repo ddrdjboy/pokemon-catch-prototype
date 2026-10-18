@@ -344,10 +344,10 @@ function showScreen(name) {
 }
 
 function refreshHeader() {
-  $('coin-display').textContent = `金币 ${state.coins}`;
-  $('fruit-display').textContent = `异次元果 ${state.riftFruit || 0}`;
+  $('coin-display').textContent = `🪙 ${state.coins}`;
+  $('fruit-display').textContent = `🍇 ${state.riftFruit || 0}`;
   const twinEl = $('twin-key-display');
-  if (twinEl) twinEl.textContent = `双子钥匙 ${state.twinKeys || 0}`;
+  if (twinEl) twinEl.textContent = `🔑 ${state.twinKeys || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
 }
 

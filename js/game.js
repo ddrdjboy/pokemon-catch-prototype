@@ -818,10 +818,34 @@ function mazeViewSize() {
   };
 }
 
+const MAZE_HELP_TEXT = '点击角色相邻格子移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+
+let mazeToastTimer = null;
+
 function mazePlayerSprite() {
   const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
   const sp = SPECIES[lead?.speciesId];
   return sp?.sprite || 'assets/pokemon/scorbunny.png';
+}
+
+function showMazeToast(text, ms = 4200) {
+  const el = $('maze-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (mazeToastTimer) clearTimeout(mazeToastTimer);
+  mazeToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    mazeToastTimer = null;
+  }, ms);
+}
+
+function onMazeTileClick(x, y) {
+  if (!mazeRun) return;
+  const dx = x - mazeRun.player.x;
+  const dy = y - mazeRun.player.y;
+  if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+  tryMazeStep(dx, dy);
 }
 
 function renderMaze() {
@@ -833,18 +857,27 @@ function renderMaze() {
   const view = mazeViewSize();
   const h = mazeRun.grid.length;
   const w = mazeRun.grid[0].length;
+  const px = mazeRun.player.x;
+  const py = mazeRun.player.y;
   world.style.width = `${w * tile}px`;
   world.style.height = `${h * tile}px`;
   world.innerHTML = '';
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
+      const kind = mazeRun.grid[y][x];
       const cell = document.createElement('div');
-      cell.className = `maze-tile ${mazeRun.grid[y][x]}`;
+      const adjacent = Math.abs(x - px) + Math.abs(y - py) === 1 && kind !== 'wall';
+      cell.className = `maze-tile ${kind}${adjacent ? ' adjacent' : ''}`;
       cell.style.left = `${x * tile}px`;
       cell.style.top = `${y * tile}px`;
       cell.style.width = `${tile}px`;
       cell.style.height = `${tile}px`;
+      if (adjacent) {
+        cell.dataset.mazeX = String(x);
+        cell.dataset.mazeY = String(y);
+        cell.addEventListener('click', () => onMazeTileClick(x, y));
+      }
       world.appendChild(cell);
     }
   }
@@ -2141,11 +2174,8 @@ $('btn-maze-exit').addEventListener('click', () => {
   if (!mazeRun) return;
   endMazeRun({ message: '已退出灵堂（进度不保留）。' });
 });
-document.querySelectorAll('[data-maze-dir]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const [dx, dy] = btn.dataset.mazeDir.split(',').map(Number);
-    tryMazeStep(dx, dy);
-  });
+$('btn-maze-info')?.addEventListener('click', () => {
+  showMazeToast(MAZE_HELP_TEXT);
 });
 window.addEventListener('keydown', (e) => {
   if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;

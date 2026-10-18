@@ -220,6 +220,36 @@ const BASE_SPECIES = {
     sprite: 'assets/pokemon/miraidon.png',
     eyeOffset: { x: 0, y: -6 },
   },
+  eternatus: {
+    id: 'eternatus',
+    name: '伊裴尔达尔',
+    type: 'dragon',
+    base: { hp: 140, atk: 85, def: 95, spd: 130 },
+    move: { name: '无限之枪', power: 120, type: 'dragon' },
+    catchRate: 0.04,
+    sprite: 'assets/pokemon/eternatus.png',
+    eyeOffset: { x: 0, y: -8 },
+  },
+  xerneas: {
+    id: 'xerneas',
+    name: '哲尔尼亚斯',
+    type: 'fairy',
+    base: { hp: 126, atk: 131, def: 95, spd: 99 },
+    move: { name: '大地掌控', power: 115, type: 'fairy' },
+    catchRate: 0.04,
+    sprite: 'assets/pokemon/xerneas.png',
+    eyeOffset: { x: 0, y: -10 },
+  },
+  zygarde: {
+    id: 'zygarde',
+    name: '基格尔德',
+    type: 'dragon',
+    base: { hp: 216, atk: 100, def: 121, spd: 85 },
+    move: { name: '核心惩罚者', power: 125, type: 'dragon' },
+    catchRate: 0.03,
+    sprite: 'assets/pokemon/zygarde.png',
+    eyeOffset: { x: 0, y: -6 },
+  },
 };
 
 export const SPECIES = { ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES };
@@ -567,6 +597,17 @@ export const TWIN_KEY = {
   price: 5000,
 };
 
+export const SPIRIT_HALL_BOSS_LEVELS = { 1: 225, 2: 250, 3: 300 };
+
+const SPIRIT_HALL_MAP = {
+  id: 'spirit_hall',
+  name: '灵堂',
+  image: 'assets/maps/spirit_hall.png',
+  bossChance: 0,
+  spiritHall: true,
+  encounters: [],
+};
+
 const TWIN_MAP = {
   id: 'twin_towers',
   name: '双子塔',
@@ -631,6 +672,7 @@ export const MAPS = {
   ...REGION_MAPS,
   rift: RIFT_MAP,
   twin_towers: TWIN_MAP,
+  spirit_hall: SPIRIT_HALL_MAP,
 };
 
 export const SHINY_RATE_WITH_CHARM = 1 / 8;
@@ -895,11 +937,17 @@ export function sellPokemon(state, uid) {
   return { mon, price };
 }
 
+export function canEnterSpiritHall(state) {
+  if (!state?.twinCleared) return { ok: false, reason: 'twin' };
+  return { ok: true };
+}
+
 export function initialPlayerState() {
   return {
     coins: 300,
     riftFruit: 0,
     twinKeys: 0,
+    twinCleared: false,
     hasShinyCharm: false,
     catchStyle: 'flick',
     battleAnim: 'light',

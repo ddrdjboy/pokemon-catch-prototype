@@ -24,6 +24,7 @@ import {
   partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
   TWIN_UNLOCK_LEVEL, TWIN_UNLOCK_COUNT, TWIN_KEY_COST, TWIN_KEY, TWIN_BOSS_LEVEL,
+  canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
@@ -311,7 +312,7 @@ for (const id of regionIds) {
     known.add(sid);
   }
 }
-assert(Object.keys(MAPS).length === 21, '21 maps total');
+assert(Object.keys(MAPS).length === 22, '22 maps total');
 
 console.log('rift raid');
 assert(SPECIES.mega_rayquaza?.name === '超级裂空座' && SPECIES.mega_rayquaza.mega, 'mega rayquaza');
@@ -394,6 +395,17 @@ const dualFoes = heroes.foes.map((f) => ({ ...f }));
 const dualTurn = resolveDualTurn(dualPlayers, dualFoes, () => 0);
 assert(dualTurn.logs.length >= 2, 'dual turn has multiple actions');
 assert(dualTurn.players.length === 2 && dualTurn.foes.length === 2, 'dual turn keeps both sides');
+
+console.log('spirit hall unlock');
+assert(SPECIES.eternatus?.name === '伊裴尔达尔', 'eternatus species');
+assert(SPECIES.xerneas?.name === '哲尔尼亚斯', 'xerneas species');
+assert(SPECIES.zygarde?.name === '基格尔德', 'zygarde species');
+assert(MAPS.spirit_hall?.spiritHall === true && MAPS.spirit_hall.name === '灵堂', 'spirit hall map');
+assert(canEnterSpiritHall({ twinCleared: false }).ok === false, 'locked without twin clear');
+assert(canEnterSpiritHall({ twinCleared: true }).ok === true, 'open after twin clear');
+const init = initialPlayerState();
+assert(init.twinCleared === false, 'fresh save not cleared');
+assert(SPIRIT_HALL_BOSS_LEVELS[1] === 225 && SPIRIT_HALL_BOSS_LEVELS[2] === 250 && SPIRIT_HALL_BOSS_LEVELS[3] === 300, 'boss levels table');
 
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);

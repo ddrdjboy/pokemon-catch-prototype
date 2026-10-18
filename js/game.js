@@ -65,7 +65,7 @@ import {
 } from './maze.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
-const ASSET_VER = 'v2pixel192e-8bit-maze-scroll';
+const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
 const spriteUrl = (path) => `${path}?${ASSET_VER}`;
 
 /** Pixel size of one maze cell; keep in sync with CSS `--maze-tile`. */

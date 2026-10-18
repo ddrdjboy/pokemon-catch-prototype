@@ -29,7 +29,6 @@ import {
   rollEncounter,
   syncEncounters,
   trimParty,
-  PARTY_STYLES,
   moveWithinZone,
   recallToBag,
   sendToActive,
@@ -198,7 +197,7 @@ function hydrateState(parsed) {
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
-  if (!PARTY_STYLES.includes(s.partyStyle)) s.partyStyle = 'capsule';
+  delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
   if (s.balls.dusk) {
     s.balls.ultra = (s.balls.ultra || 0) + s.balls.dusk;
@@ -287,7 +286,6 @@ function renderSelect() {
   const count = $('party-count');
   count.textContent = `${state.party.length}/${PARTY_CAP}`;
   count.classList.toggle('full', state.party.length >= PARTY_CAP);
-  applyPartyStyle();
   renderParty($('party-list'), false);
 }
 
@@ -509,16 +507,6 @@ function shopItem({ title, img, price, owned, disabled, onBuy, label, icon }) {
 let openPartyUid = null;
 let partyOutsideListenerBound = false;
 
-function applyPartyStyle() {
-  const pane = $('party-pane');
-  if (pane) pane.dataset.partyStyle = state.partyStyle || 'capsule';
-  const modal = $('party-style-modal');
-  if (!modal) return;
-  for (const btn of modal.querySelectorAll('[data-party-style]')) {
-    btn.classList.toggle('selected', btn.dataset.partyStyle === state.partyStyle);
-  }
-}
-
 function closePartyPopover() {
   if (openPartyUid == null) return;
   openPartyUid = null;
@@ -620,25 +608,6 @@ function renderParty(container, selectable, onPick, mons = null, { onlyConscious
     }
     return card;
   };
-
-  if (!selectable && state.partyStyle === 'split') {
-    const makeZone = (label, zone, mems) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'party-zone';
-      const lab = document.createElement('div');
-      lab.className = 'party-zone-label';
-      lab.textContent = label;
-      const rail = document.createElement('div');
-      rail.className = 'party-rail';
-      rail.dataset.zone = zone;
-      for (const mon of mems) rail.appendChild(buildCard(mon));
-      wrap.append(lab, rail);
-      return wrap;
-    };
-    container.appendChild(makeZone('出场', 'active', list.slice(0, ACTIVE_CAP)));
-    if (list.length > ACTIVE_CAP) container.appendChild(makeZone('背包', 'bag', list.slice(ACTIVE_CAP)));
-    return;
-  }
 
   for (const mon of list) container.appendChild(buildCard(mon));
 }
@@ -1824,32 +1793,6 @@ $('btn-reset-cancel').addEventListener('click', closeResetConfirm);
 $('btn-reset-confirm').addEventListener('click', resetGame);
 $('reset-modal').addEventListener('click', (e) => {
   if (e.target === $('reset-modal')) closeResetConfirm();
-});
-
-function openPartyStyleModal() {
-  $('party-style-modal').classList.remove('hidden');
-  applyPartyStyle();
-}
-
-function closePartyStyleModal() {
-  $('party-style-modal').classList.add('hidden');
-}
-
-$('btn-party-style').addEventListener('click', openPartyStyleModal);
-$('btn-close-party-style').addEventListener('click', closePartyStyleModal);
-$('party-style-modal').addEventListener('click', (e) => {
-  if (e.target === $('party-style-modal')) closePartyStyleModal();
-});
-$('party-style-options').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-party-style]');
-  if (!btn) return;
-  const style = btn.dataset.partyStyle;
-  if (!PARTY_STYLES.includes(style)) return;
-  state.partyStyle = style;
-  save();
-  applyPartyStyle();
-  renderParty($('party-list'), false);
-  closePartyStyleModal();
 });
 
 document.addEventListener('pointerdown', () => {

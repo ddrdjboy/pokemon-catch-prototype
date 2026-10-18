@@ -88,6 +88,7 @@ let dualPickUids = [];
 let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
+let bagSelectedItemId = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -1455,6 +1456,97 @@ async function onUseItem(itemId) {
   }
 }
 
+function monAcceptsItem(mon, item) {
+  if (!mon || !item) return false;
+  if (item.effect === 'heal') return mon.hp > 0 && mon.hp < mon.maxHp;
+  if (item.effect === 'revive') return mon.hp <= 0;
+  if (item.effect === 'xp') return true;
+  return false;
+}
+
+function closeBagPanels() {
+  bagSelectedItemId = null;
+  $('bag-item-panel')?.classList.add('hidden');
+  $('bag-target-panel')?.classList.add('hidden');
+}
+
+function renderBagItemList() {
+  const list = $('bag-item-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const item of Object.values(ITEMS)) {
+    const owned = state.items?.[item.id] || 0;
+    const anyTarget = state.party.some((m) => monAcceptsItem(m, item));
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'item-row';
+    row.disabled = owned <= 0 || !anyTarget;
+    row.innerHTML = `
+      <span class="item-icon">${item.icon}</span>
+      <span class="item-name">${item.name}</span>
+      <span class="item-effect">${itemEffectLabel(item)}</span>
+      <span class="item-owned">×${owned}</span>
+    `;
+    row.addEventListener('click', () => openBagTargetPicker(item.id));
+    list.appendChild(row);
+  }
+}
+
+function openBagItemPanel() {
+  if (battle) return; // party bag is out-of-battle only
+  renderBagItemList();
+  $('bag-target-panel')?.classList.add('hidden');
+  $('bag-item-panel')?.classList.remove('hidden');
+}
+
+function openBagTargetPicker(itemId) {
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  bagSelectedItemId = itemId;
+  const list = $('bag-target-list');
+  list.innerHTML = '';
+  for (const mon of state.party) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'party-card';
+    const ok = monAcceptsItem(mon, item);
+    btn.disabled = !ok;
+    const sp = SPECIES[mon.speciesId];
+    btn.textContent = `${sp?.name || mon.speciesId} Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`;
+    btn.addEventListener('click', () => onBagUseItem(mon.uid));
+    list.appendChild(btn);
+  }
+  $('bag-item-panel')?.classList.add('hidden');
+  $('bag-target-panel')?.classList.remove('hidden');
+}
+
+function onBagUseItem(uid) {
+  const item = ITEMS[bagSelectedItemId];
+  const mon = state.party.find((p) => p.uid === uid);
+  if (!item || !mon || (state.items?.[item.id] || 0) <= 0) return;
+  if (!monAcceptsItem(mon, item)) return;
+  const result = applyItem(mon, item.id);
+  if (!result.ok) return;
+  state.items[item.id] -= 1;
+  const lines = [];
+  if (result.kind === 'heal') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 复活了！（HP ${mon.hp}/${mon.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    lines.push(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) lines.push(line);
+  }
+  const fb = $('bag-item-feedback');
+  if (fb) {
+    fb.hidden = false;
+    fb.textContent = lines.join(' ');
+  }
+  save();
+  renderParty($('party-list'), false);
+  closeBagPanels();
+}
+
 function awardXp(foe) {
   const fighter = state.party.find((p) => p.uid === battle.playerUid);
   if (!fighter) return false;
@@ -1818,6 +1910,12 @@ $('btn-item').addEventListener('click', () => {
   else closeItemPanel();
 });
 $('btn-close-items').addEventListener('click', closeItemPanel);
+$('btn-party-items')?.addEventListener('click', openBagItemPanel);
+$('btn-close-bag-items')?.addEventListener('click', closeBagPanels);
+$('btn-close-bag-target')?.addEventListener('click', () => {
+  $('bag-target-panel')?.classList.add('hidden');
+  openBagItemPanel();
+});
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   closeItemPanel();

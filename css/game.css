@@ -267,6 +267,10 @@ body {
   font-size: 0.85rem;
 }
 
+.party-item-bar {
+  margin: 0.5rem 0;
+}
+
 .party-list {
   display: flex;
   flex-direction: row;

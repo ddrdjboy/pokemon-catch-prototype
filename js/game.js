@@ -114,7 +114,7 @@ let dualPickUids = [];
 let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
-let bagSelectedItemId = null;
+let itemsUiSelectedId = null;
 let mazeRun = null;
 
 const HP_ANIM_MS = 550;
@@ -188,27 +188,44 @@ function ownedItemUsableInBattle(item) {
   return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
 }
 
+function isBattleScreenActive() {
+  return !!battle && !screens.battle.classList.contains('hidden');
+}
+
 function canUseBattleItem() {
-  if (!battle || battleBusy || continueResolver) return false;
+  if (!isBattleScreenActive() || battleBusy || continueResolver) return false;
   return Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
 }
 
 function updateItemButton() {
-  const btn = $('btn-item');
+  const btn = $('btn-items');
   if (!btn) return;
-  btn.disabled = !canUseBattleItem();
+  if (isBattleScreenActive()) {
+    btn.disabled = !canUseBattleItem();
+  } else {
+    btn.disabled = false;
+  }
+}
+
+function closeItemsModal() {
+  itemsUiSelectedId = null;
+  $('items-modal')?.classList.add('hidden');
+  $('items-step-list')?.classList.remove('hidden');
+  $('items-step-target')?.classList.add('hidden');
+  const title = $('items-title');
+  if (title) title.textContent = '道具';
 }
 
 function closeItemPanel() {
-  $('item-panel')?.classList.add('hidden');
+  closeItemsModal();
 }
 
 function setBattleActionBusy(busy) {
   $('btn-attack').disabled = busy;
   $('btn-flee-battle').disabled = busy;
   if (busy) {
-    $('btn-item').disabled = true;
     closeItemPanel();
+    updateItemButton();
   } else {
     updateItemButton();
   }
@@ -230,7 +247,6 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
-    $('btn-item').disabled = true;
     closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
@@ -238,6 +254,7 @@ function waitForContinue(message) {
       continueResolver = null;
       resolve();
     };
+    updateItemButton();
   });
 }
 
@@ -323,6 +340,7 @@ function showScreen(name) {
   for (const [key, el] of Object.entries(screens)) {
     el.classList.toggle('hidden', key !== name);
   }
+  updateItemButton();
 }
 
 function refreshHeader() {
@@ -854,8 +872,10 @@ function mazeViewSize() {
 }
 
 const MAZE_HELP_TEXT = '点击角色相邻格子移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
 
 let mazeToastTimer = null;
+let appToastTimer = null;
 
 function mazePlayerSprite() {
   const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
@@ -872,6 +892,18 @@ function showMazeToast(text, ms = 4200) {
   mazeToastTimer = setTimeout(() => {
     el.classList.add('hidden');
     mazeToastTimer = null;
+  }, ms);
+}
+
+function showAppToast(text, ms = 4000) {
+  const el = $('app-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    appToastTimer = null;
   }, ms);
 }
 
@@ -1685,32 +1717,6 @@ async function onAttack() {
   }
 }
 
-function renderItemList() {
-  const list = $('item-list');
-  list.innerHTML = '';
-  for (const item of Object.values(ITEMS)) {
-    const owned = state.items?.[item.id] || 0;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'item-row';
-    row.disabled = !ownedItemUsableInBattle(item);
-    row.innerHTML = `
-      <span class="item-icon">${item.icon}</span>
-      <span class="item-name">${item.name}</span>
-      <span class="item-effect">${itemEffectLabel(item)}</span>
-      <span class="item-owned">×${owned}</span>
-    `;
-    row.addEventListener('click', () => onUseItem(item.id));
-    list.appendChild(row);
-  }
-}
-
-function openItemPanel() {
-  if (!canUseBattleItem()) return;
-  renderItemList();
-  $('item-panel').classList.remove('hidden');
-}
-
 async function onUseItem(itemId) {
   if (!battle || battleBusy || continueResolver) return;
   const item = ITEMS[itemId];
@@ -1757,7 +1763,13 @@ async function onUseItem(itemId) {
   }
   save();
   renderBattle();
-  showHealNumber(battle.dual ? slotWrap('player', slot) : $('player-sprite-wrap'), amount);
+  if (result.kind === 'heal' || result.kind === 'revive') {
+    const healAmt = result.kind === 'heal' ? result.amount : fighter.hp;
+    const wrap = battle.dual && target.index >= 0
+      ? slotWrap('player', target.index)
+      : $('player-sprite-wrap');
+    showHealNumber(wrap, healAmt);
+  }
 
   try {
     if (battle.dual) {
@@ -1790,46 +1802,39 @@ function monAcceptsItem(mon, item) {
   return false;
 }
 
-function closeBagPanels() {
-  bagSelectedItemId = null;
-  $('bag-item-panel')?.classList.add('hidden');
-  $('bag-target-panel')?.classList.add('hidden');
-}
-
-function renderBagItemList() {
-  const list = $('bag-item-list');
+function renderItemsModalList() {
+  const list = $('items-list');
   if (!list) return;
   list.innerHTML = '';
+  const inBattle = isBattleScreenActive();
   for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
-    const anyTarget = state.party.some((m) => monAcceptsItem(m, item));
+    const usable = inBattle
+      ? ownedItemUsableInBattle(item)
+      : owned > 0 && state.party.some((m) => monAcceptsItem(m, item));
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
-    row.disabled = owned <= 0 || !anyTarget;
+    row.disabled = !usable;
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
       <span class="item-effect">${itemEffectLabel(item)}</span>
       <span class="item-owned">×${owned}</span>
     `;
-    row.addEventListener('click', () => openBagTargetPicker(item.id));
+    row.addEventListener('click', () => {
+      if (inBattle) onUseItem(item.id);
+      else openItemsTargetPicker(item.id);
+    });
     list.appendChild(row);
   }
 }
 
-function openBagItemPanel() {
-  if (battle) return; // party bag is out-of-battle only
-  renderBagItemList();
-  $('bag-target-panel')?.classList.add('hidden');
-  $('bag-item-panel')?.classList.remove('hidden');
-}
-
-function openBagTargetPicker(itemId) {
+function openItemsTargetPicker(itemId) {
   const item = ITEMS[itemId];
   if (!item || (state.items?.[itemId] || 0) <= 0) return;
-  bagSelectedItemId = itemId;
-  const list = $('bag-target-list');
+  itemsUiSelectedId = itemId;
+  const list = $('items-target-list');
   list.innerHTML = '';
   for (const mon of state.party) {
     const btn = document.createElement('button');
@@ -1839,15 +1844,16 @@ function openBagTargetPicker(itemId) {
     btn.disabled = !ok;
     const sp = SPECIES[mon.speciesId];
     btn.textContent = `${sp?.name || mon.speciesId} Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`;
-    btn.addEventListener('click', () => onBagUseItem(mon.uid));
+    btn.addEventListener('click', () => onItemsUseOutOfBattle(mon.uid));
     list.appendChild(btn);
   }
-  $('bag-item-panel')?.classList.add('hidden');
-  $('bag-target-panel')?.classList.remove('hidden');
+  $('items-step-list').classList.add('hidden');
+  $('items-step-target').classList.remove('hidden');
+  $('items-title').textContent = '选择宝可梦';
 }
 
-function onBagUseItem(uid) {
-  const item = ITEMS[bagSelectedItemId];
+function onItemsUseOutOfBattle(uid) {
+  const item = ITEMS[itemsUiSelectedId];
   const mon = state.party.find((p) => p.uid === uid);
   if (!item || !mon || (state.items?.[item.id] || 0) <= 0) return;
   if (!monAcceptsItem(mon, item)) return;
@@ -1863,14 +1869,24 @@ function onBagUseItem(uid) {
     lines.push(`使用了 ${item.name}！`);
     for (const line of result.logs || []) lines.push(line);
   }
-  const fb = $('bag-item-feedback');
-  if (fb) {
-    fb.hidden = false;
-    fb.textContent = lines.join(' ');
-  }
+  showAppToast(lines.join(' '));
   save();
   renderParty($('party-list'), false);
-  closeBagPanels();
+  closeItemsModal();
+}
+
+function openItemsUi() {
+  if (isBattleScreenActive()) {
+    if (!canUseBattleItem()) {
+      showAppToast('现在不能用道具');
+      return;
+    }
+  }
+  $('items-title').textContent = '道具';
+  $('items-step-list').classList.remove('hidden');
+  $('items-step-target').classList.add('hidden');
+  renderItemsModalList();
+  $('items-modal').classList.remove('hidden');
 }
 
 function awardXp(foe) {
@@ -1972,15 +1988,20 @@ function openCatchPick() {
 
 function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
+  battle = null;
+  battleBusy = false;
+  continueResolver = null;
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
   if (inSpiritHall()) {
     if (wipeMaze) failMazeRun();
     else returnAfterMazeBattle();
+    updateItemButton();
     return;
   }
   openMap(currentMapId);
+  updateItemButton();
 }
 
 function finishBattleWin(evolved) {
@@ -2246,6 +2267,9 @@ $('btn-maze-exit').addEventListener('click', () => {
 $('btn-maze-info')?.addEventListener('click', () => {
   showMazeToast(MAZE_HELP_TEXT);
 });
+$('btn-party-info')?.addEventListener('click', () => {
+  showAppToast(PARTY_HELP_TEXT);
+});
 window.addEventListener('keydown', (e) => {
   if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;
   const dirs = {
@@ -2259,17 +2283,10 @@ window.addEventListener('keydown', (e) => {
   tryMazeStep(d[0], d[1]);
 });
 $('btn-attack').addEventListener('click', onAttack);
-$('btn-item').addEventListener('click', () => {
-  if (battleBusy || continueResolver) return;
-  if ($('item-panel').classList.contains('hidden')) openItemPanel();
-  else closeItemPanel();
-});
-$('btn-close-items').addEventListener('click', closeItemPanel);
-$('btn-party-items')?.addEventListener('click', openBagItemPanel);
-$('btn-close-bag-items')?.addEventListener('click', closeBagPanels);
-$('btn-close-bag-target')?.addEventListener('click', () => {
-  $('bag-target-panel')?.classList.add('hidden');
-  openBagItemPanel();
+$('btn-items')?.addEventListener('click', openItemsUi);
+$('btn-close-items')?.addEventListener('click', closeItemsModal);
+$('items-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('items-modal')) closeItemsModal();
 });
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;

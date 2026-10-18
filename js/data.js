@@ -693,8 +693,6 @@ export function movePartyMember(party, uid, dir) {
   return true;
 }
 
-export const PARTY_STYLES = ['capsule', 'tile', 'split'];
-
 /** Same-zone reorder only. Never crosses ACTIVE_CAP boundary. */
 export function moveWithinZone(party, uid, dir, cap = ACTIVE_CAP) {
   const i = party.findIndex((p) => p.uid === uid);
@@ -937,7 +935,6 @@ export function initialPlayerState() {
     twinKeys: 0,
     hasShinyCharm: false,
     catchStyle: 'flick',
-    partyStyle: 'capsule',
     battleAnim: 'light',
     balls: { poke: 5, great: 0, ultra: 0, quick: 0, master: 0 },
     items: emptyHealItems(),

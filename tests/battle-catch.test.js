@@ -15,7 +15,7 @@ import {
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
-  activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, PARTY_STYLES, BALLS,
+  activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, BALLS,
   HEAL_ITEMS, applyHealItem, initialPlayerState,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
   partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
@@ -172,8 +172,6 @@ assert(s.map((p) => p.uid).join() === 's1,s2,s3,s4,s5,s8,s6,s7', 'inserted as 6t
 assert(activeParty(s).some((p) => p.uid === 's8'), 'sent is active');
 assert(!activeParty(s).some((p) => p.uid === 's6'), 'old 6th benched');
 assert(!sendToActive(s, 's1'), 'active cannot sendToActive');
-
-assert(PARTY_STYLES.includes('capsule') && PARTY_STYLES.includes('tile') && PARTY_STYLES.includes('split'), 'styles listed');
 
 console.log('trainer teams');
 const wildCounts = {

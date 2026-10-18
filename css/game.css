@@ -280,7 +280,7 @@ body {
   grid-template-columns: unset;
 }
 
-/* Pick-party (outside .party-pane): wrapping grid of compact cards, no horizontal rail */
+/* Pick-party: wrapping grid of tile cards */
 #pick-party.party-list {
   flex-wrap: wrap;
   overflow: visible;
@@ -288,30 +288,27 @@ body {
 }
 
 #pick-party .party-card {
-  flex: 1 1 148px;
-  width: auto;
-  max-width: 260px;
+  flex: 0 0 auto;
 }
 
-/* Shared card: name + meta stacked beside the sprite */
+/* 精灵球瓷砖：方卡，立绘为主、等级角标、名字一行 */
 .party-card {
   position: relative;
   cursor: pointer;
   box-sizing: border-box;
   flex: 0 0 auto;
-  width: 148px;
-  min-height: 56px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: 1fr 1fr;
-  column-gap: 8px;
+  width: 88px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 8px 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 6px 12px 6px 6px;
+  border-radius: 12px;
   background: #1c2a3a;
   color: var(--text);
-  text-align: left;
   font: inherit;
 }
 
@@ -326,12 +323,10 @@ body {
 }
 
 .party-card .sprite-frame {
-  grid-row: 1 / span 2;
-  grid-column: 1;
-  width: 44px;
-  height: 44px;
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
-  border-radius: 50%;
+  border-radius: 14px;
   background:
     radial-gradient(circle at 50% 70%, rgba(255, 255, 255, 0.12), transparent 55%),
     linear-gradient(160deg, #2a4058, #1a2838);
@@ -342,8 +337,8 @@ body {
 }
 
 .party-card img {
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
@@ -355,11 +350,9 @@ body {
 }
 
 .party-card > strong {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
+  width: 100%;
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -367,12 +360,16 @@ body {
 }
 
 .party-card > .meta {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: start;
-  font-size: 0.75rem;
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--gold);
+  font-size: 0.65rem;
+  font-weight: 700;
   line-height: 1.2;
-  color: var(--muted);
 }
 
 .party-card.in-battle {
@@ -387,127 +384,26 @@ body {
   z-index: 5;
   box-sizing: border-box;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  justify-content: center;
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--accent);
-  border-radius: inherit;
+  border-radius: 12px;
   background: rgba(12, 20, 30, 0.96);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
   cursor: default;
 }
 
 .party-popover button {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
-  min-height: 0;
+  min-height: 26px;
   padding: 2px 4px;
   font-size: 0.72rem;
   line-height: 1.1;
   border-radius: 999px;
   white-space: nowrap;
-}
-
-/* —— Tile —— */
-.party-pane[data-party-style="tile"] .party-card {
-  width: 88px;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 4px;
-  padding: 8px 6px;
-  border-radius: 12px;
-}
-
-.party-pane[data-party-style="tile"] .party-card .sprite-frame {
-  width: 64px;
-  height: 64px;
-  border-radius: 14px;
-}
-
-.party-pane[data-party-style="tile"] .party-card img {
-  width: 56px;
-  height: 56px;
-}
-
-.party-pane[data-party-style="tile"] .party-card > strong {
-  width: 100%;
-  font-size: 0.75rem;
-}
-
-.party-pane[data-party-style="tile"] .party-card > .meta {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  color: var(--gold);
-  font-size: 0.65rem;
-  font-weight: 700;
-}
-
-.party-pane[data-party-style="tile"] .party-popover {
-  flex-direction: column;
-  border-radius: 12px;
-  justify-content: center;
-}
-
-.party-pane[data-party-style="tile"] .party-popover button {
-  flex: 0 0 auto;
-  min-height: 26px;
-}
-
-/* —— Split rails —— */
-.party-pane[data-party-style="split"] .party-list {
-  flex-direction: column;
-  gap: 8px;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.party-zone {
-  min-width: 0;
-}
-
-.party-zone-label {
-  margin-bottom: 4px;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.party-rail {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: #4a6580 transparent;
-  overscroll-behavior-x: contain;
-}
-
-/* split cards use the shared capsule dimensions (148px pill, 44px sprite) */
-
-/* —— Display style modal —— */
-.party-style-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 12px 0 16px;
-}
-
-.party-style-options button {
-  text-align: left;
-}
-
-.party-style-options button.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-  background: #1f3d57;
 }
 
 .party-card .sell {

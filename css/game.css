@@ -62,26 +62,48 @@ body {
 
 .status {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
-#coin-display,
-#fruit-display,
-#twin-key-display,
-#charm-display {
+.status-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.status-metric {
   background: none;
   border-radius: 0;
   padding: 0;
-  line-height: 1.15;
-  font-size: 0.82rem;
+  line-height: 1.1;
+  font-size: 0.8rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 #coin-display { color: var(--gold); }
 #fruit-display { color: #b2ebf2; }
 #twin-key-display { color: #ce93d8; }
 #charm-display { color: #e1bee7; }
+
+.coin-icon {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.2em;
+  vertical-align: -0.08em;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, #fff59d 0%, #ffd54f 42%, #f9a825 72%, #ef6c00 100%);
+  box-shadow:
+    inset 0 -1px 1px rgba(93, 64, 0, 0.35),
+    0 0 0 1px rgba(255, 213, 79, 0.35);
+}
 
 .screen.hidden, .hidden { display: none !important; }
 
@@ -1315,29 +1337,31 @@ button.danger {
 
   .status {
     flex: 1 1 100%;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: 6px;
     justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .status button {
-    min-height: 44px;
+    min-height: 36px;
     display: inline-flex;
     align-items: center;
-    padding: 8px 12px;
-    font-size: 0.9rem;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    flex: 0 0 auto;
   }
 
-  #coin-display,
-  #fruit-display,
-  #twin-key-display,
-  #charm-display {
+  .status-metrics {
+    gap: 5px;
+  }
+
+  .status-metric {
     min-height: 0;
     padding: 0;
-    font-size: 0.8rem;
-    line-height: 1.15;
-    background: none;
-    border-radius: 0;
+    font-size: 0.78rem;
+    line-height: 1.1;
   }
 
   button {

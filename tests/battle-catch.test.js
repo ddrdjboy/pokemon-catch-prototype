@@ -28,6 +28,7 @@ import {
   canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
+import { partyIndividualView } from '../js/party-detail.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
 import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
 import {
@@ -725,6 +726,40 @@ console.log('spirit hall flow helpers');
 
   assert(MAPS.spirit_hall.encounters.length === 0, 'spirit hall has no marker encounters');
 }
+
+console.log('\nparty individual view');
+{
+  const view = partyIndividualView({
+    speciesId: 'bulbasaur',
+    level: 5,
+    hp: 12,
+    maxHp: 20,
+    atk: 11,
+    def: 10,
+    spd: 9,
+    exp: 4,
+    shiny: true,
+  });
+  assert(view.level === 5, 'level');
+  assert(view.hpText === '12/20', 'hp text');
+  assert(view.atk === 11 && view.def === 10 && view.spd === 9, 'combat stats');
+  assert(view.expText === `4/${xpToNext(5)}`, 'exp toward next level');
+  assert(view.shiny === true && view.fainted === false, 'shiny not fainted');
+}
+{
+  const view = partyIndividualView({
+    speciesId: 'pikachu',
+    level: 8,
+    hp: 0,
+    maxHp: 30,
+    atk: 1,
+    def: 1,
+    spd: 1,
+  });
+  assert(view.expText === `0/${xpToNext(8)}`, 'missing exp counts as 0');
+  assert(view.fainted === true && view.shiny === false, 'fainted not shiny');
+}
+assert(partyIndividualView(null) === null, 'null mon');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

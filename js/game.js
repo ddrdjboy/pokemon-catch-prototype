@@ -6,9 +6,6 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
-  HEAL_ITEMS,
-  emptyHealItems,
-  applyHealItem,
   TWIN_KEY,
   TWIN_KEY_COST,
   TWIN_UNLOCK_LEVEL,
@@ -36,6 +33,7 @@ import {
   listDexTypes,
   getDexDetail,
 } from './data.js';
+import { HEAL_ITEMS, emptyHealItems, applyHealItem } from './items.js';
 import {
   nextBattleStep,
   resolveDualTurn,

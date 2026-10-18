@@ -14,9 +14,12 @@ import {
 } from '../js/battle-fx.js';
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
+  ITEMS, HEAL_ITEMS, emptyItems, emptyHealItems, applyItem, applyHealItem,
+} from '../js/items.js';
+import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
   activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, BALLS,
-  HEAL_ITEMS, applyHealItem, initialPlayerState,
+  initialPlayerState,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
   partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
@@ -518,6 +521,55 @@ fainted.hp = 0;
 assert(applyHealItem(fainted, 'potion') === 0 && fainted.hp === 0, 'cannot heal fainted');
 const topped = createPokemon('scorbunny', 5);
 assert(applyHealItem(topped, 'potion') === 0 && topped.hp === topped.maxHp, 'no heal when full');
+
+console.log('unified items');
+assert(ITEMS.expCandyS.effect === 'xp' && ITEMS.expCandyS.value === 100 && ITEMS.expCandyS.price === 200, 'candy S');
+assert(ITEMS.expCandyM.value === 400 && ITEMS.expCandyM.price === 700, 'candy M');
+assert(ITEMS.expCandyL.value === 1000 && ITEMS.expCandyL.price === 1600, 'candy L');
+assert(ITEMS.expCandyXL.value === 2500 && ITEMS.expCandyXL.price === 3500, 'candy XL');
+assert(ITEMS.expCandyXXL.value === 6000 && ITEMS.expCandyXXL.price === 8000, 'candy XXL');
+assert(ITEMS.vitalityShard.effect === 'revive' && ITEMS.vitalityShard.value === 0.5 && ITEMS.vitalityShard.price === 1200, 'shard');
+assert(ITEMS.vitalityBlock.value === 1 && ITEMS.vitalityBlock.price === 2800, 'block');
+assert(HEAL_ITEMS.potion.heal === 20 && HEAL_ITEMS.potion.price === 50, 'potion alias');
+
+const stock = emptyItems();
+for (const id of Object.keys(ITEMS)) {
+  assert(stock[id] === 0, `empty ${id}`);
+}
+const starter = initialPlayerState().items;
+assert(starter.expCandyS === 0 && starter.vitalityShard === 0, 'new game has new item keys');
+
+{
+  const hurtUni = createPokemon('scorbunny', 5);
+  hurtUni.hp = Math.max(1, hurtUni.maxHp - 30);
+  const healOk = applyItem(hurtUni, 'potion');
+  assert(healOk.ok && healOk.kind === 'heal' && healOk.amount === 20, 'applyItem heal');
+  assert(applyHealItem(hurtUni, 'potion') >= 0, 'applyHealItem still works');
+
+  const faintedUni = createPokemon('scorbunny', 5);
+  faintedUni.hp = 0;
+  assert(applyItem(faintedUni, 'potion').ok === false, 'no heal fainted');
+  const shard = applyItem(faintedUni, 'vitalityShard');
+  assert(shard.ok && shard.kind === 'revive', 'shard revives');
+  assert(faintedUni.hp === Math.max(1, Math.floor(faintedUni.maxHp * 0.5)), 'shard 50%');
+  const living = createPokemon('scorbunny', 5);
+  assert(applyItem(living, 'vitalityBlock').ok === false, 'no revive living');
+  living.hp = 0;
+  const block = applyItem(living, 'vitalityBlock');
+  assert(block.ok && living.hp === living.maxHp, 'block full');
+
+  const pup = createPokemon('scorbunny', 5);
+  pup.exp = 0;
+  const beforeLevel = pup.level;
+  const candy = applyItem(pup, 'expCandyS');
+  assert(candy.ok && candy.kind === 'xp' && candy.amount === 100, 'candy grants 100');
+  assert(pup.exp === 100 || pup.level > beforeLevel, 'exp applied');
+  const down = createPokemon('scorbunny', 5);
+  down.hp = 0;
+  down.exp = 0;
+  applyItem(down, 'expCandyM');
+  assert(down.hp === 0, 'fainted stays 0 after candy');
+}
 
 console.log('item turn foe only');
 const healTurnPlayer = createPokemon('scorbunny', 10);

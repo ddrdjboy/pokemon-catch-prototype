@@ -18,6 +18,8 @@ html, body {
   margin: 0;
   overflow: hidden;
   background: var(--bg);
+  /* Disable double-tap zoom; keep clicks/scrolls working */
+  touch-action: manipulation;
 }
 
 body {
@@ -29,6 +31,7 @@ body {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
 #app {

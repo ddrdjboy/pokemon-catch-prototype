@@ -1801,6 +1801,10 @@ document.addEventListener('pointerdown', () => {
   if (!onBattle) playExploreBgm();
 }, { once: true });
 
+// Prevent accidental page zoom (double-tap / iOS gesture)
+document.addEventListener('dblclick', (e) => e.preventDefault());
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
 save();
 showScreen('select');
 renderSelect();

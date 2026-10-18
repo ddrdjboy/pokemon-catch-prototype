@@ -8,9 +8,10 @@
   <script type="importmap">
   {
     "imports": {
-      "/js/game.js": "/js/game.js?v=catchsfx1",
+      "/js/game.js": "/js/game.js?v=items1",
+      "/js/items.js": "/js/items.js?v=items1",
       "/js/audio.js": "/js/audio.js?v=catchsfx1",
-      "/js/data.js": "/js/data.js?v=tile1",
+      "/js/data.js": "/js/data.js?v=items1",
       "/js/battle.js": "/js/battle.js?v=heal2",
       "/js/battle-fx.js": "/js/battle-fx.js?v=battlefx2",
       "/js/catch.js": "/js/catch.js?v=rift1",
@@ -51,6 +52,24 @@
       <div class="panel split-pane party-pane" id="party-pane">
         <h2 class="party-head">我的宝可梦 <span id="party-count">1/99</span></h2>
         <p class="hint party-hint">点卡排序。前 6 出场；收回进背包，上场回前 6。</p>
+        <div class="party-item-bar">
+          <button id="btn-party-items" type="button">道具</button>
+        </div>
+        <div id="bag-item-panel" class="item-panel hidden">
+          <div class="item-panel-head">
+            <span>选择道具</span>
+            <button id="btn-close-bag-items" type="button">取消</button>
+          </div>
+          <div id="bag-item-list" class="item-list"></div>
+        </div>
+        <div id="bag-target-panel" class="item-panel hidden">
+          <div class="item-panel-head">
+            <span>选择宝可梦</span>
+            <button id="btn-close-bag-target" type="button">取消</button>
+          </div>
+          <div id="bag-target-list" class="party-list"></div>
+        </div>
+        <p id="bag-item-feedback" class="hint party-hint" hidden></p>
         <div id="party-list" class="party-list"></div>
       </div>
     </section>
@@ -183,6 +202,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=catchsfx1"></script>
+  <script type="module" src="js/game.js?v=items1"></script>
 </body>
 </html>

@@ -6,9 +6,6 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
-  HEAL_ITEMS,
-  emptyHealItems,
-  applyHealItem,
   TWIN_KEY,
   TWIN_KEY_COST,
   TWIN_UNLOCK_LEVEL,
@@ -36,6 +33,12 @@ import {
   listDexTypes,
   getDexDetail,
 } from './data.js';
+import {
+  ITEMS,
+  emptyItems,
+  applyItem,
+  itemEffectLabel,
+} from './items.js';
 import {
   nextBattleStep,
   resolveDualTurn,
@@ -85,6 +88,7 @@ let dualPickUids = [];
 let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
+let bagSelectedItemId = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -99,24 +103,73 @@ function attackLabel() {
   return '攻击';
 }
 
-function healTargetsOnField() {
+function onFieldMons() {
   if (!battle) return [];
-  const mons = battle.dual ? (battle.players || []) : [battle.player];
-  return mons
+  return battle.dual ? (battle.players || []) : [battle.player];
+}
+
+function healTargetsOnField() {
+  return onFieldMons()
     .map((mon, index) => ({ mon, index }))
     .filter(({ mon }) => mon && mon.hp > 0 && mon.hp < mon.maxHp);
 }
 
-function canUseHealItem() {
+function xpTargetsOnField() {
+  return onFieldMons()
+    .map((mon, index) => ({ mon, index }))
+    .filter(({ mon }) => mon && mon.hp > 0);
+}
+
+function reviveTargets() {
+  if (!battle) return [];
+  const field = onFieldMons()
+    .map((mon, index) => ({ mon, index, uid: battle.dual ? battle.playerUids[index] : battle.playerUid, onField: true }))
+    .filter(({ mon }) => mon && mon.hp <= 0);
+  if (field.length) return field;
+  const onFieldUids = new Set(
+    battle.dual ? (battle.playerUids || []) : [battle.playerUid],
+  );
+  return activeParty(state.party)
+    .filter((p) => p.hp <= 0 && !onFieldUids.has(p.uid))
+    .map((mon) => ({ mon, index: -1, uid: mon.uid, onField: false }));
+}
+
+function autoTargetForItem(item) {
+  if (item.effect === 'heal') {
+    const targets = healTargetsOnField();
+    if (!targets.length) return null;
+    targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
+    const t = targets[targets.length - 1];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'xp') {
+    const targets = xpTargetsOnField();
+    if (!targets.length) return null;
+    const t = targets[0];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'revive') {
+    const targets = reviveTargets();
+    return targets[0] || null;
+  }
+  return null;
+}
+
+function ownedItemUsableInBattle(item) {
+  return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
+}
+
+function canUseBattleItem() {
   if (!battle || battleBusy || continueResolver) return false;
-  if (!healTargetsOnField().length) return false;
-  return Object.keys(HEAL_ITEMS).some((id) => (state.items?.[id] || 0) > 0);
+  return Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
 }
 
 function updateItemButton() {
   const btn = $('btn-item');
   if (!btn) return;
-  btn.disabled = !canUseHealItem();
+  btn.disabled = !canUseBattleItem();
 }
 
 function closeItemPanel() {
@@ -186,12 +239,12 @@ function hydrateState(parsed) {
     ...base,
     ...parsed,
     balls: { ...base.balls, ...(parsed.balls || {}) },
-    items: { ...emptyHealItems(), ...(parsed.items || {}) },
+    items: { ...emptyItems(), ...(parsed.items || {}) },
     party: trimParty((parsed.party || base.party).map((p) => ({ ...p }))),
     cleared: { ...(parsed.cleared || {}) },
     encounters: { ...(parsed.encounters || {}) },
   };
-  for (const id of Object.keys(HEAL_ITEMS)) {
+  for (const id of Object.keys(ITEMS)) {
     s.items[id] = Math.max(0, Math.floor(Number(s.items[id]) || 0));
   }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
@@ -307,19 +360,18 @@ function renderShop() {
       },
     }));
   }
-  for (const item of Object.values(HEAL_ITEMS)) {
-    const healLabel = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+  for (const item of Object.values(ITEMS)) {
     shop.appendChild(shopItem({
       title: item.name,
       icon: item.icon,
       price: item.price,
       owned: state.items?.[item.id] || 0,
       disabled: state.coins < item.price,
-      label: healLabel,
+      label: itemEffectLabel(item),
       onBuy: () => {
         if (state.coins < item.price) return;
         state.coins -= item.price;
-        if (!state.items) state.items = emptyHealItems();
+        if (!state.items) state.items = emptyItems();
         state.items[item.id] = (state.items[item.id] || 0) + 1;
         afterPurchase();
       },
@@ -1311,17 +1363,16 @@ async function onAttack() {
 function renderItemList() {
   const list = $('item-list');
   list.innerHTML = '';
-  for (const item of Object.values(HEAL_ITEMS)) {
+  for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
-    const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
-    row.disabled = owned <= 0;
+    row.disabled = !ownedItemUsableInBattle(item);
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
-      <span class="item-effect">${effect}</span>
+      <span class="item-effect">${itemEffectLabel(item)}</span>
       <span class="item-owned">×${owned}</span>
     `;
     row.addEventListener('click', () => onUseItem(item.id));
@@ -1330,38 +1381,55 @@ function renderItemList() {
 }
 
 function openItemPanel() {
-  if (!canUseHealItem()) return;
+  if (!canUseBattleItem()) return;
   renderItemList();
   $('item-panel').classList.remove('hidden');
 }
 
 async function onUseItem(itemId) {
   if (!battle || battleBusy || continueResolver) return;
-  const item = HEAL_ITEMS[itemId];
-  if (!item) return;
-  if ((state.items?.[itemId] || 0) <= 0) return;
-  const targets = healTargetsOnField();
-  if (!targets.length) return;
-  targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
-  const { mon: fieldMon, index: slot } = targets[targets.length - 1];
-  const uid = battle.dual ? battle.playerUids[slot] : battle.playerUid;
-  const fighter = state.party.find((p) => p.uid === uid);
-  if (!fighter || fighter.hp <= 0 || fighter.hp >= fighter.maxHp) return;
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  const target = autoTargetForItem(item);
+  if (!target) return;
+
+  const fighter = state.party.find((p) => p.uid === target.uid);
+  if (!fighter) return;
+
+  if (target.onField && target.index >= 0) {
+    const fieldMon = onFieldMons()[target.index];
+    if (fieldMon) fighter.hp = fieldMon.hp;
+  }
 
   closeItemPanel();
   battleBusy = true;
   setBattleActionBusy(true);
 
-  state.items[itemId] -= 1;
-  fighter.hp = fieldMon.hp;
-  const amount = applyHealItem(fighter, itemId);
-  if (battle.dual) {
-    battle.players[slot] = { ...fighter };
-    battle.player = battle.players[0];
-  } else {
-    battle.player = { ...fighter };
+  const result = applyItem(fighter, itemId);
+  if (!result.ok) {
+    battleBusy = false;
+    setBattleActionBusy(false);
+    return;
   }
-  appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${amount} 点 HP！`);
+  state.items[itemId] -= 1;
+
+  if (target.onField && target.index >= 0) {
+    if (battle.dual) {
+      battle.players[target.index] = { ...fighter };
+      battle.player = battle.players[0];
+    } else {
+      battle.player = { ...fighter };
+    }
+  }
+
+  if (result.kind === 'heal') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 复活了！（HP ${fighter.hp}/${fighter.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    appendLog(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) appendLog(line);
+  }
   save();
   renderBattle();
 
@@ -1386,6 +1454,97 @@ async function onUseItem(itemId) {
     console.error(err);
     resetAttackButton();
   }
+}
+
+function monAcceptsItem(mon, item) {
+  if (!mon || !item) return false;
+  if (item.effect === 'heal') return mon.hp > 0 && mon.hp < mon.maxHp;
+  if (item.effect === 'revive') return mon.hp <= 0;
+  if (item.effect === 'xp') return true;
+  return false;
+}
+
+function closeBagPanels() {
+  bagSelectedItemId = null;
+  $('bag-item-panel')?.classList.add('hidden');
+  $('bag-target-panel')?.classList.add('hidden');
+}
+
+function renderBagItemList() {
+  const list = $('bag-item-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const item of Object.values(ITEMS)) {
+    const owned = state.items?.[item.id] || 0;
+    const anyTarget = state.party.some((m) => monAcceptsItem(m, item));
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'item-row';
+    row.disabled = owned <= 0 || !anyTarget;
+    row.innerHTML = `
+      <span class="item-icon">${item.icon}</span>
+      <span class="item-name">${item.name}</span>
+      <span class="item-effect">${itemEffectLabel(item)}</span>
+      <span class="item-owned">×${owned}</span>
+    `;
+    row.addEventListener('click', () => openBagTargetPicker(item.id));
+    list.appendChild(row);
+  }
+}
+
+function openBagItemPanel() {
+  if (battle) return; // party bag is out-of-battle only
+  renderBagItemList();
+  $('bag-target-panel')?.classList.add('hidden');
+  $('bag-item-panel')?.classList.remove('hidden');
+}
+
+function openBagTargetPicker(itemId) {
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  bagSelectedItemId = itemId;
+  const list = $('bag-target-list');
+  list.innerHTML = '';
+  for (const mon of state.party) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'party-card';
+    const ok = monAcceptsItem(mon, item);
+    btn.disabled = !ok;
+    const sp = SPECIES[mon.speciesId];
+    btn.textContent = `${sp?.name || mon.speciesId} Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`;
+    btn.addEventListener('click', () => onBagUseItem(mon.uid));
+    list.appendChild(btn);
+  }
+  $('bag-item-panel')?.classList.add('hidden');
+  $('bag-target-panel')?.classList.remove('hidden');
+}
+
+function onBagUseItem(uid) {
+  const item = ITEMS[bagSelectedItemId];
+  const mon = state.party.find((p) => p.uid === uid);
+  if (!item || !mon || (state.items?.[item.id] || 0) <= 0) return;
+  if (!monAcceptsItem(mon, item)) return;
+  const result = applyItem(mon, item.id);
+  if (!result.ok) return;
+  state.items[item.id] -= 1;
+  const lines = [];
+  if (result.kind === 'heal') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 复活了！（HP ${mon.hp}/${mon.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    lines.push(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) lines.push(line);
+  }
+  const fb = $('bag-item-feedback');
+  if (fb) {
+    fb.hidden = false;
+    fb.textContent = lines.join(' ');
+  }
+  save();
+  renderParty($('party-list'), false);
+  closeBagPanels();
 }
 
 function awardXp(foe) {
@@ -1751,6 +1910,12 @@ $('btn-item').addEventListener('click', () => {
   else closeItemPanel();
 });
 $('btn-close-items').addEventListener('click', closeItemPanel);
+$('btn-party-items')?.addEventListener('click', openBagItemPanel);
+$('btn-close-bag-items')?.addEventListener('click', closeBagPanels);
+$('btn-close-bag-target')?.addEventListener('click', () => {
+  $('bag-target-panel')?.classList.add('hidden');
+  openBagItemPanel();
+});
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   closeItemPanel();

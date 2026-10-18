@@ -1,10 +1,11 @@
 import {
-  calcDamage, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
+  calcDamage, CRIT_MULT, CRIT_RATE, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
   resolveFoeOnlyTurn, resolveSquadItemTurn, whoGoesFirstDeterministic,
 } from '../js/battle.js';
 import {
   normalizeBattleAnim,
   effectiveBattleAnim,
+  damageNumberVariant,
   typeTint,
   playHit,
   hasFighterFrames,
@@ -63,14 +64,32 @@ assert(typeMultiplier('fire', 'water') === 0.5, 'fire < water');
 console.log('damage');
 const atk = createPokemon('scorbunny', 5);
 const def = createPokemon('bulbasaur', 5);
-const { damage, typeMult } = calcDamage(atk, def, { power: 40, type: 'fire' });
+const noCrit = () => 1;
+const alwaysCrit = () => 0;
+const move40 = { power: 40, type: 'fire' };
+const { damage, typeMult, crit } = calcDamage(atk, def, move40, noCrit);
 assert(typeMult === 1.5, 'super effective mult');
+assert(crit === false, 'rng 1 is not a crit');
 assert(damage === Math.max(1, Math.floor((atk.atk * 40) / def.def * 1.5)), 'damage formula');
 
 const rock = createPokemon('geodude', 5);
-const { damage: d2, typeMult: m2 } = calcDamage(atk, rock, { power: 40, type: 'fire' });
+const { damage: d2, typeMult: m2 } = calcDamage(atk, rock, move40, noCrit);
 assert(m2 === 0.5, 'fire vs rock resisted');
 assert(d2 >= 1, 'min damage 1');
+
+const critHit = calcDamage(atk, def, move40, alwaysCrit);
+assert(CRIT_RATE === 1 / 16, 'crit rate is 1/16');
+assert(critHit.crit === true, 'rng 0 is a crit');
+assert(
+  critHit.damage === Math.max(1, Math.floor((atk.atk * 40) / def.def * 1.5 * CRIT_MULT)),
+  'crit applies 1.5 after type multiplier',
+);
+assert(damageNumberVariant({ typeMult: 1 }) === 'normal', 'normal number');
+assert(damageNumberVariant({ typeMult: 1.5 }) === 'super', 'super effective number');
+assert(damageNumberVariant({ typeMult: 0.5 }) === 'resist', 'resisted number');
+assert(damageNumberVariant({ typeMult: 1, crit: true }) === 'normal crit', 'crit number');
+assert(damageNumberVariant({ typeMult: 1.5, crit: true }) === 'super crit', 'crit super number');
+assert(damageNumberVariant({ heal: true, crit: true }) === 'heal', 'heal number ignores crit');
 
 console.log('speed');
 const fast = { spd: 70 };

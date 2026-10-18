@@ -1,12 +1,21 @@
 import { SPECIES, typeMultiplier } from './data.js';
 
+/** Critical hits land when rng() is below this rate (about 1/16). */
+export const CRIT_RATE = 1 / 16;
+/** Applied after the type multiplier, before the final floor. */
+export const CRIT_MULT = 1.5;
+
 /**
- * Damage: max(1, floor(atk * power / def * typeMult))
+ * Damage: max(1, floor(atk * power / def * typeMult * critMult))
+ * rng() < CRIT_RATE is a critical hit. Pass a fixed rng in tests.
  */
-export function calcDamage(attacker, defender, move) {
+export function calcDamage(attacker, defender, move, rng = Math.random) {
   const mult = typeMultiplier(move.type, SPECIES[defender.speciesId].type);
-  const raw = Math.floor((attacker.atk * move.power) / Math.max(1, defender.def) * mult);
-  return { damage: Math.max(1, raw), typeMult: mult };
+  const crit = rng() < CRIT_RATE;
+  const raw = Math.floor(
+    (attacker.atk * move.power) / Math.max(1, defender.def) * mult * (crit ? CRIT_MULT : 1),
+  );
+  return { damage: Math.max(1, raw), typeMult: mult, crit };
 }
 
 export function whoGoesFirst(a, b) {
@@ -31,22 +40,24 @@ export function resolveTurn(player, foe, rng = Math.random) {
   for (const side of order) {
     if (p.hp <= 0 || f.hp <= 0) break;
     if (side === 'player') {
-      const { damage, typeMult } = calcDamage(p, f, pMove);
-      f.hp = Math.max(0, f.hp - damage);
+      const hit = calcDamage(p, f, pMove, rng);
+      f.hp = Math.max(0, f.hp - hit.damage);
       logs.push({
-        text: `${SPECIES[p.speciesId].name} 使用了 ${pMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
-        damage,
-        typeMult,
+        text: `${SPECIES[p.speciesId].name} 使用了 ${pMove.name}！${damageClause(hit)}`,
+        damage: hit.damage,
+        typeMult: hit.typeMult,
+        crit: hit.crit,
         moveType: pMove.type,
         side: 'player',
       });
     } else {
-      const { damage, typeMult } = calcDamage(f, p, fMove);
-      p.hp = Math.max(0, p.hp - damage);
+      const hit = calcDamage(f, p, fMove, rng);
+      p.hp = Math.max(0, p.hp - hit.damage);
       logs.push({
-        text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
-        damage,
-        typeMult,
+        text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！${damageClause(hit)}`,
+        damage: hit.damage,
+        typeMult: hit.typeMult,
+        crit: hit.crit,
         moveType: fMove.type,
         side: 'foe',
       });
@@ -84,13 +95,14 @@ export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
   for (const attacker of attackers) {
     if (f.hp <= 0) break;
     const move = SPECIES[attacker.mon.speciesId].move;
-    const { damage, typeMult } = calcDamage(attacker.mon, f, move);
-    f.hp = Math.max(0, f.hp - damage);
+    const hit = calcDamage(attacker.mon, f, move, rng);
+    f.hp = Math.max(0, f.hp - hit.damage);
     const who = attacker.kind === 'ally' ? `电脑的${SPECIES[attacker.mon.speciesId].name}` : SPECIES[attacker.mon.speciesId].name;
     logs.push({
-      text: `${who} 使用了 ${move.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
-      damage,
-      typeMult,
+      text: `${who} 使用了 ${move.name}！${damageClause(hit)}`,
+      damage: hit.damage,
+      typeMult: hit.typeMult,
+      crit: hit.crit,
       moveType: move.type,
       side: attacker.kind === 'player' ? 'player' : 'ally',
       allyIndex: attacker.index,
@@ -125,18 +137,19 @@ export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
 /**
  * Player used an item this turn: only the foe attacks.
  */
-export function resolveFoeOnlyTurn(player, foe) {
+export function resolveFoeOnlyTurn(player, foe, rng = Math.random) {
   const logs = [];
   const p = { ...player };
   const f = { ...foe };
   if (p.hp > 0 && f.hp > 0) {
     const fMove = SPECIES[f.speciesId].move;
-    const { damage, typeMult } = calcDamage(f, p, fMove);
-    p.hp = Math.max(0, p.hp - damage);
+    const hit = calcDamage(f, p, fMove, rng);
+    p.hp = Math.max(0, p.hp - hit.damage);
     logs.push({
-      text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！造成 ${damage} 点伤害${typeHint(typeMult)}`,
-      damage,
-      typeMult,
+      text: `${SPECIES[f.speciesId].name} 使用了 ${fMove.name}！${damageClause(hit)}`,
+      damage: hit.damage,
+      typeMult: hit.typeMult,
+      crit: hit.crit,
       moveType: fMove.type,
       side: 'foe',
     });
@@ -202,14 +215,15 @@ function castBossMove(foe, move, squad, logs, rng) {
   const targets = move.aoe ? squad : [squad[Math.min(squad.length - 1, Math.floor(rng() * squad.length))]];
   for (const target of targets) {
     if (target.mon.hp <= 0) continue;
-    const hit = calcDamage(foe, target.mon, move);
+    const hit = calcDamage(foe, target.mon, move, rng);
     target.mon.hp = Math.max(0, target.mon.hp - hit.damage);
     const who = target.kind === 'ally' ? `电脑的${SPECIES[target.mon.speciesId].name}` : SPECIES[target.mon.speciesId].name;
     const wave = move.aoe ? '横扫' : '打向';
     logs.push({
-      text: `${SPECIES[foe.speciesId].name} 使用了 ${move.name}！${wave}${who}，造成 ${hit.damage} 点伤害${typeHint(hit.typeMult)}`,
+      text: `${SPECIES[foe.speciesId].name} 使用了 ${move.name}！${wave}${who}，${damageClause(hit)}`,
       damage: hit.damage,
       typeMult: hit.typeMult,
+      crit: hit.crit,
       moveType: move.type,
       side: 'foe',
       target: target.kind,
@@ -222,6 +236,10 @@ function typeHint(mult) {
   if (mult > 1) return '（效果拔群！）';
   if (mult < 1) return '（效果不佳…）';
   return '';
+}
+
+function damageClause(hit) {
+  return `造成 ${hit.damage} 点伤害${typeHint(hit.typeMult)}${hit.crit ? '会心一击！' : ''}`;
 }
 
 /**
@@ -253,14 +271,15 @@ export function resolveDualTurn(players, foes, rng = Math.random) {
     if (!targets.length) break;
     const preferred = targets.find((t) => t.index === actor.index) || targets[0];
     const move = SPECIES[actor.mon.speciesId].move;
-    const { damage, typeMult } = calcDamage(actor.mon, preferred.mon, move);
-    preferred.mon.hp = Math.max(0, preferred.mon.hp - damage);
+    const hit = calcDamage(actor.mon, preferred.mon, move, rng);
+    preferred.mon.hp = Math.max(0, preferred.mon.hp - hit.damage);
     const atkName = SPECIES[actor.mon.speciesId].name;
     const defName = SPECIES[preferred.mon.speciesId].name;
     logs.push({
-      text: `${atkName} 使用了 ${move.name}！打向${defName}，造成 ${damage} 点伤害${typeHint(typeMult)}`,
-      damage,
-      typeMult,
+      text: `${atkName} 使用了 ${move.name}！打向${defName}，${damageClause(hit)}`,
+      damage: hit.damage,
+      typeMult: hit.typeMult,
+      crit: hit.crit,
       moveType: move.type,
       side: actor.side,
       actorIndex: actor.index,
@@ -306,14 +325,15 @@ export function resolveDualItemTurn(players, foes, rng = Math.random) {
     if (!targets.length) break;
     const preferred = targets.find((t) => t.index === actor.index) || targets[0];
     const move = SPECIES[actor.mon.speciesId].move;
-    const { damage, typeMult } = calcDamage(actor.mon, preferred.mon, move);
-    preferred.mon.hp = Math.max(0, preferred.mon.hp - damage);
+    const hit = calcDamage(actor.mon, preferred.mon, move, rng);
+    preferred.mon.hp = Math.max(0, preferred.mon.hp - hit.damage);
     const atkName = SPECIES[actor.mon.speciesId].name;
     const defName = SPECIES[preferred.mon.speciesId].name;
     logs.push({
-      text: `${atkName} 使用了 ${move.name}！打向${defName}，造成 ${damage} 点伤害${typeHint(typeMult)}`,
-      damage,
-      typeMult,
+      text: `${atkName} 使用了 ${move.name}！打向${defName}，${damageClause(hit)}`,
+      damage: hit.damage,
+      typeMult: hit.typeMult,
+      crit: hit.crit,
       moveType: move.type,
       side: 'foe',
       actorIndex: actor.index,

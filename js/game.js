@@ -49,8 +49,16 @@ import {
   resolveTurn,
   resolveFoeOnlyTurn,
 } from './battle.js';
-import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
-import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx, playCatchSuccessSfx } from './audio.js';
+import { hasFighterFrames, normalizeBattleAnim, playDamageNumber, playFighterFrameStrip, playHit } from './battle-fx.js';
+import {
+  unlockAudio,
+  playExploreBgm,
+  playBattleBgm,
+  playAttackSfx,
+  playCatchSuccessSfx,
+  setMusicEnabled,
+  setSfxEnabled,
+} from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, tryEvolve } from './level.js';
 import {
@@ -272,6 +280,9 @@ function hydrateState(parsed) {
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
+  s.damageNumbers = s.damageNumbers !== false;
+  s.musicEnabled = s.musicEnabled !== false;
+  s.sfxEnabled = s.sfxEnabled !== false;
   if (s.balls.dusk) {
     s.balls.ultra = (s.balls.ultra || 0) + s.balls.dusk;
     delete s.balls.dusk;
@@ -320,7 +331,31 @@ function refreshHeader() {
   const twinEl = $('twin-key-display');
   if (twinEl) twinEl.textContent = `双子钥匙 ${state.twinKeys || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
+}
+
+function applyAudioSettings() {
+  setMusicEnabled(state.musicEnabled !== false);
+  setSfxEnabled(state.sfxEnabled !== false);
+}
+
+function openSettings() {
+  refreshSettingsPanel();
+  $('settings-modal').classList.remove('hidden');
+}
+
+function closeSettings() {
+  $('settings-modal').classList.add('hidden');
+}
+
+function refreshSettingsPanel() {
   refreshBattleAnimButton();
+  renderCatchStyle();
+  const musicBtn = $('btn-music');
+  const sfxBtn = $('btn-sfx');
+  const numBtn = $('btn-damage-numbers');
+  if (musicBtn) musicBtn.textContent = state.musicEnabled !== false ? '开' : '关';
+  if (sfxBtn) sfxBtn.textContent = state.sfxEnabled !== false ? '开' : '关';
+  if (numBtn) numBtn.textContent = state.damageNumbers !== false ? '开' : '关';
 }
 
 function renderSelect() {
@@ -1205,11 +1240,13 @@ function fillDualSlot(playerMon) {
 function renderSprite(wrapId, mon) {
   const wrap = $(wrapId);
   const sp = SPECIES[mon.speciesId];
+  const floats = [...wrap.querySelectorAll('.fx-num')];
   wrap.className = `sprite-wrap${mon.shiny ? ' shiny' : ''}`;
   wrap.innerHTML = `<img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" />`;
   if (mon.boss) {
     wrap.innerHTML += '<div class="boss-eyes"><span></span><span></span></div>';
   }
+  for (const num of floats) wrap.appendChild(num);
 }
 
 function renderFighterSlot(side, index, mon) {
@@ -1419,6 +1456,7 @@ async function playDualTurnHits(turn) {
       }
     }
     syncBattleHp();
+    showLineNumber(line);
     await wait(HP_ANIM_MS);
     if (battle.foes.every((f) => f.hp <= 0)) {
       await waitForContinue('两只 Boss 都倒下了！');
@@ -1472,6 +1510,7 @@ async function playTurnHits(turn, startPlayer, startFoe) {
       setHpBar('player-hp', playerHp, battle.player.maxHp);
     }
     syncBattleHp();
+    showLineNumber(line);
     await wait(HP_ANIM_MS);
 
     if (playerWasUp && playerHp <= 0) playerFell = true;
@@ -1492,6 +1531,24 @@ async function playTurnHits(turn, startPlayer, startFoe) {
   if (turn.allies) battle.allies = turn.allies.map((ally) => ({ ...ally }));
   syncBattleHp();
   renderAllies();
+}
+
+function showLineNumber(line) {
+  const { defenderEl } = battleHitElements(line);
+  playDamageNumber(defenderEl, {
+    amount: line.damage,
+    typeMult: line.typeMult,
+    crit: !!line.crit,
+    enabled: state.damageNumbers !== false,
+  });
+}
+
+function showHealNumber(anchorEl, amount) {
+  playDamageNumber(anchorEl, {
+    amount,
+    heal: true,
+    enabled: state.damageNumbers !== false,
+  });
 }
 
 function grantRiftFruit(foe) {
@@ -1700,6 +1757,7 @@ async function onUseItem(itemId) {
   }
   save();
   renderBattle();
+  showHealNumber(battle.dual ? slotWrap('player', slot) : $('player-sprite-wrap'), amount);
 
   try {
     if (battle.dual) {
@@ -1985,8 +2043,10 @@ function updateCatchCopy() {
 }
 
 function renderCatchStyle() {
+  const root = $('catch-style');
+  if (!root) return;
   const busy = !!catchCtrl?.isBusy();
-  for (const btn of $('catch-style').querySelectorAll('button')) {
+  for (const btn of root.querySelectorAll('button')) {
     btn.classList.toggle('selected', btn.dataset.style === state.catchStyle);
     btn.disabled = busy;
   }
@@ -2225,7 +2285,7 @@ $('catch-style').addEventListener('click', (e) => {
   state.catchStyle = style;
   save();
   renderCatchStyle();
-  updateCatchCopy();
+  if (!$('screen-catch').classList.contains('hidden')) updateCatchCopy();
 });
 $('btn-dex').addEventListener('click', openDex);
 $('btn-close-dex').addEventListener('click', closeDex);
@@ -2237,12 +2297,34 @@ $('dex-detail-modal').addEventListener('click', (e) => {
   if (e.target === $('dex-detail-modal')) closeDexDetail();
 });
 $('btn-shop').addEventListener('click', openShop);
+$('btn-settings').addEventListener('click', openSettings);
+$('btn-close-settings').addEventListener('click', closeSettings);
+$('settings-modal').addEventListener('click', (e) => {
+  if (e.target === $('settings-modal')) closeSettings();
+});
 $('btn-battle-anim').addEventListener('click', () => {
   const cur = normalizeBattleAnim(state.battleAnim);
   const idx = BATTLE_ANIM_ORDER.indexOf(cur);
   state.battleAnim = BATTLE_ANIM_ORDER[(idx + 1) % BATTLE_ANIM_ORDER.length];
   save();
   refreshBattleAnimButton();
+});
+$('btn-damage-numbers').addEventListener('click', () => {
+  state.damageNumbers = !(state.damageNumbers !== false);
+  save();
+  refreshSettingsPanel();
+});
+$('btn-music').addEventListener('click', () => {
+  state.musicEnabled = !(state.musicEnabled !== false);
+  applyAudioSettings();
+  save();
+  refreshSettingsPanel();
+});
+$('btn-sfx').addEventListener('click', () => {
+  state.sfxEnabled = !(state.sfxEnabled !== false);
+  applyAudioSettings();
+  save();
+  refreshSettingsPanel();
 });
 $('btn-close-shop').addEventListener('click', closeShop);
 $('shop-modal').addEventListener('click', (e) => {
@@ -2266,6 +2348,7 @@ document.addEventListener('pointerdown', () => {
 document.addEventListener('dblclick', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
+applyAudioSettings();
 save();
 showScreen('select');
 renderSelect();

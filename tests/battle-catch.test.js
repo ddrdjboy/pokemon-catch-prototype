@@ -24,7 +24,7 @@ import {
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
-import { selectBattleTrack, sfxKeyForMoveType } from '../js/audio.js';
+import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
 
 let passed = 0;
 let failed = 0;
@@ -465,6 +465,7 @@ assert(sfxKeyForMoveType('ghost') === 'psychic', 'ghost→psychic');
 assert(sfxKeyForMoveType('flying') === 'dragon', 'flying→dragon');
 assert(sfxKeyForMoveType('fighting') === 'normal', 'fighting→normal');
 assert(sfxKeyForMoveType('unknown') === 'normal', 'unknown→normal');
+assert(typeof playCatchSuccessSfx === 'function', 'catch success sfx export');
 
 console.log('pokedex anim preview');
 clearFighterFrameCache();

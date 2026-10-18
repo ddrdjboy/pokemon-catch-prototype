@@ -35,9 +35,8 @@ import {
 } from './data.js';
 import {
   ITEMS,
-  HEAL_ITEMS,
   emptyItems,
-  applyHealItem,
+  applyItem,
   itemEffectLabel,
 } from './items.js';
 import {
@@ -103,24 +102,70 @@ function attackLabel() {
   return '攻击';
 }
 
-function healTargetsOnField() {
+function onFieldMons() {
   if (!battle) return [];
-  const mons = battle.dual ? (battle.players || []) : [battle.player];
-  return mons
+  return battle.dual ? (battle.players || []) : [battle.player];
+}
+
+function healTargetsOnField() {
+  return onFieldMons()
     .map((mon, index) => ({ mon, index }))
     .filter(({ mon }) => mon && mon.hp > 0 && mon.hp < mon.maxHp);
 }
 
-function canUseHealItem() {
+function xpTargetsOnField() {
+  return onFieldMons()
+    .map((mon, index) => ({ mon, index }))
+    .filter(({ mon }) => mon && mon.hp > 0);
+}
+
+function reviveTargets() {
+  if (!battle) return [];
+  const field = onFieldMons()
+    .map((mon, index) => ({ mon, index, uid: battle.dual ? battle.playerUids[index] : battle.playerUid, onField: true }))
+    .filter(({ mon }) => mon && mon.hp <= 0);
+  if (field.length) return field;
+  return state.party
+    .filter((p) => p.hp <= 0)
+    .map((mon) => ({ mon, index: -1, uid: mon.uid, onField: false }));
+}
+
+function autoTargetForItem(item) {
+  if (item.effect === 'heal') {
+    const targets = healTargetsOnField();
+    if (!targets.length) return null;
+    targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
+    const t = targets[targets.length - 1];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'xp') {
+    const targets = xpTargetsOnField();
+    if (!targets.length) return null;
+    const t = targets[0];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'revive') {
+    const targets = reviveTargets();
+    return targets[0] || null;
+  }
+  return null;
+}
+
+function ownedItemUsableInBattle(item) {
+  return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
+}
+
+function canUseBattleItem() {
   if (!battle || battleBusy || continueResolver) return false;
-  if (!healTargetsOnField().length) return false;
-  return Object.keys(HEAL_ITEMS).some((id) => (state.items?.[id] || 0) > 0);
+  return Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
 }
 
 function updateItemButton() {
   const btn = $('btn-item');
   if (!btn) return;
-  btn.disabled = !canUseHealItem();
+  btn.disabled = !canUseBattleItem();
 }
 
 function closeItemPanel() {
@@ -1314,17 +1359,16 @@ async function onAttack() {
 function renderItemList() {
   const list = $('item-list');
   list.innerHTML = '';
-  for (const item of Object.values(HEAL_ITEMS)) {
+  for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
-    const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
-    row.disabled = owned <= 0;
+    row.disabled = !ownedItemUsableInBattle(item);
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
-      <span class="item-effect">${effect}</span>
+      <span class="item-effect">${itemEffectLabel(item)}</span>
       <span class="item-owned">×${owned}</span>
     `;
     row.addEventListener('click', () => onUseItem(item.id));
@@ -1333,38 +1377,55 @@ function renderItemList() {
 }
 
 function openItemPanel() {
-  if (!canUseHealItem()) return;
+  if (!canUseBattleItem()) return;
   renderItemList();
   $('item-panel').classList.remove('hidden');
 }
 
 async function onUseItem(itemId) {
   if (!battle || battleBusy || continueResolver) return;
-  const item = HEAL_ITEMS[itemId];
-  if (!item) return;
-  if ((state.items?.[itemId] || 0) <= 0) return;
-  const targets = healTargetsOnField();
-  if (!targets.length) return;
-  targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
-  const { mon: fieldMon, index: slot } = targets[targets.length - 1];
-  const uid = battle.dual ? battle.playerUids[slot] : battle.playerUid;
-  const fighter = state.party.find((p) => p.uid === uid);
-  if (!fighter || fighter.hp <= 0 || fighter.hp >= fighter.maxHp) return;
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  const target = autoTargetForItem(item);
+  if (!target) return;
+
+  const fighter = state.party.find((p) => p.uid === target.uid);
+  if (!fighter) return;
+
+  if (target.onField && target.index >= 0) {
+    const fieldMon = onFieldMons()[target.index];
+    if (fieldMon) fighter.hp = fieldMon.hp;
+  }
 
   closeItemPanel();
   battleBusy = true;
   setBattleActionBusy(true);
 
-  state.items[itemId] -= 1;
-  fighter.hp = fieldMon.hp;
-  const amount = applyHealItem(fighter, itemId);
-  if (battle.dual) {
-    battle.players[slot] = { ...fighter };
-    battle.player = battle.players[0];
-  } else {
-    battle.player = { ...fighter };
+  const result = applyItem(fighter, itemId);
+  if (!result.ok) {
+    battleBusy = false;
+    setBattleActionBusy(false);
+    return;
   }
-  appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${amount} 点 HP！`);
+  state.items[itemId] -= 1;
+
+  if (target.onField && target.index >= 0) {
+    if (battle.dual) {
+      battle.players[target.index] = { ...fighter };
+      battle.player = battle.players[0];
+    } else {
+      battle.player = { ...fighter };
+    }
+  }
+
+  if (result.kind === 'heal') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 复活了！（HP ${fighter.hp}/${fighter.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    appendLog(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) appendLog(line);
+  }
   save();
   renderBattle();
 

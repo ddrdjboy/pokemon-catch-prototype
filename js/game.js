@@ -33,7 +33,13 @@ import {
   listDexTypes,
   getDexDetail,
 } from './data.js';
-import { HEAL_ITEMS, emptyHealItems, applyHealItem } from './items.js';
+import {
+  ITEMS,
+  HEAL_ITEMS,
+  emptyItems,
+  applyHealItem,
+  itemEffectLabel,
+} from './items.js';
 import {
   nextBattleStep,
   resolveDualTurn,
@@ -184,12 +190,12 @@ function hydrateState(parsed) {
     ...base,
     ...parsed,
     balls: { ...base.balls, ...(parsed.balls || {}) },
-    items: { ...emptyHealItems(), ...(parsed.items || {}) },
+    items: { ...emptyItems(), ...(parsed.items || {}) },
     party: trimParty((parsed.party || base.party).map((p) => ({ ...p }))),
     cleared: { ...(parsed.cleared || {}) },
     encounters: { ...(parsed.encounters || {}) },
   };
-  for (const id of Object.keys(HEAL_ITEMS)) {
+  for (const id of Object.keys(ITEMS)) {
     s.items[id] = Math.max(0, Math.floor(Number(s.items[id]) || 0));
   }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
@@ -305,19 +311,18 @@ function renderShop() {
       },
     }));
   }
-  for (const item of Object.values(HEAL_ITEMS)) {
-    const healLabel = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+  for (const item of Object.values(ITEMS)) {
     shop.appendChild(shopItem({
       title: item.name,
       icon: item.icon,
       price: item.price,
       owned: state.items?.[item.id] || 0,
       disabled: state.coins < item.price,
-      label: healLabel,
+      label: itemEffectLabel(item),
       onBuy: () => {
         if (state.coins < item.price) return;
         state.coins -= item.price;
-        if (!state.items) state.items = emptyHealItems();
+        if (!state.items) state.items = emptyItems();
         state.items[item.id] = (state.items[item.id] || 0) + 1;
         afterPurchase();
       },

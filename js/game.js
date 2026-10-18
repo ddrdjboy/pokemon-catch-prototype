@@ -188,15 +188,19 @@ function ownedItemUsableInBattle(item) {
   return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
 }
 
+function isBattleScreenActive() {
+  return !!battle && !screens.battle.classList.contains('hidden');
+}
+
 function canUseBattleItem() {
-  if (!battle || battleBusy || continueResolver) return false;
+  if (!isBattleScreenActive() || battleBusy || continueResolver) return false;
   return Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
 }
 
 function updateItemButton() {
   const btn = $('btn-items');
   if (!btn) return;
-  if (battle) {
+  if (isBattleScreenActive()) {
     btn.disabled = !canUseBattleItem();
   } else {
     btn.disabled = false;
@@ -336,6 +340,7 @@ function showScreen(name) {
   for (const [key, el] of Object.entries(screens)) {
     el.classList.toggle('hidden', key !== name);
   }
+  updateItemButton();
 }
 
 function refreshHeader() {
@@ -1801,7 +1806,7 @@ function renderItemsModalList() {
   const list = $('items-list');
   if (!list) return;
   list.innerHTML = '';
-  const inBattle = !!battle;
+  const inBattle = isBattleScreenActive();
   for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
     const usable = inBattle
@@ -1871,7 +1876,7 @@ function onItemsUseOutOfBattle(uid) {
 }
 
 function openItemsUi() {
-  if (battle) {
+  if (isBattleScreenActive()) {
     if (!canUseBattleItem()) {
       showAppToast('现在不能用道具');
       return;
@@ -1983,15 +1988,20 @@ function openCatchPick() {
 
 function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
+  battle = null;
+  battleBusy = false;
+  continueResolver = null;
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
   if (inSpiritHall()) {
     if (wipeMaze) failMazeRun();
     else returnAfterMazeBattle();
+    updateItemButton();
     return;
   }
   openMap(currentMapId);
+  updateItemButton();
 }
 
 function finishBattleWin(evolved) {

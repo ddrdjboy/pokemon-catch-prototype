@@ -91,6 +91,20 @@ body {
 #twin-key-display { color: #ce93d8; }
 #charm-display { color: #e1bee7; }
 
+.coin-icon {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.2em;
+  vertical-align: -0.08em;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, #fff59d 0%, #ffd54f 42%, #f9a825 72%, #ef6c00 100%);
+  box-shadow:
+    inset 0 -1px 1px rgba(93, 64, 0, 0.35),
+    0 0 0 1px rgba(255, 213, 79, 0.35);
+}
+
 .screen.hidden, .hidden { display: none !important; }
 
 .screen {

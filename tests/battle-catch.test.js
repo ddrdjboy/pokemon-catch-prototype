@@ -33,6 +33,10 @@ import {
   generateMazeFloor,
   createMazeRun,
   stepMaze,
+  removeRoamer,
+  markFloorBossDefeated,
+  advanceMazeFloor,
+  buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
 } from '../js/maze.js';
 
@@ -676,6 +680,32 @@ assert(wallStep, 'cannot walk into walls');
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].speciesId === 'eternatus' && SPIRIT_HALL_BOSS_BY_FLOOR[1].level === 225, 'floor1 boss');
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].speciesId === 'xerneas' && SPIRIT_HALL_BOSS_BY_FLOOR[2].level === 250, 'floor2 boss');
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].speciesId === 'zygarde' && SPIRIT_HALL_BOSS_BY_FLOOR[3].level === 300, 'floor3 boss');
+
+console.log('spirit hall flow helpers');
+{
+  let run = createMazeRun({ floor: 1, rng: () => 0.5 });
+  const firstId = run.roamers[0]?.id;
+  if (firstId) {
+    run = removeRoamer(run, firstId);
+    assert(!run.roamers.find((r) => r.id === firstId), 'remove roamer works');
+  }
+  run = markFloorBossDefeated(run);
+  assert(run.floorBossDefeated, 'boss flagged');
+  const f2 = advanceMazeFloor(run, () => 0.2);
+  assert(f2 && f2.floor === 2 && f2.floorBossDefeated === false, 'advance to floor 2');
+  const f3 = advanceMazeFloor({ ...f2, floor: 2 }, () => 0.2);
+  assert(f3 && f3.floor === 3, 'floor 3');
+  assert(advanceMazeFloor({ ...f3, floor: 3 }) === null, 'no floor 4');
+
+  const bossEnc = buildFloorBossEncounter(3);
+  assert(bossEnc.speciesId === 'zygarde' && bossEnc.level === 300 && bossEnc.boss && bossEnc.shiny, 'zygarde enc');
+
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].level === SPIRIT_HALL_BOSS_LEVELS[1], 'floor1 level sync');
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].level === SPIRIT_HALL_BOSS_LEVELS[2], 'floor2 level sync');
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].level === SPIRIT_HALL_BOSS_LEVELS[3], 'floor3 level sync');
+
+  assert(MAPS.spirit_hall.encounters.length === 0, 'spirit hall has no marker encounters');
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

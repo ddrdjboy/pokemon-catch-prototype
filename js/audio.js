@@ -10,6 +10,8 @@ const BGM = {
 };
 
 const SFX_KEYS = ['fire', 'water', 'electric', 'grass', 'rock', 'psychic', 'dragon', 'normal'];
+const CATCH_SUCCESS_KEY = 'catch_success';
+const ALL_SFX_KEYS = [...SFX_KEYS, CATCH_SUCCESS_KEY];
 
 const SFX_BUCKETS = {
   fire: 'fire',
@@ -105,7 +107,7 @@ export function unlockAudio() {
   unlocked = true;
   const el = ensureBgm();
   if (el && el.src) safePlay(el);
-  for (const key of SFX_KEYS) ensureSfx(key);
+  for (const key of ALL_SFX_KEYS) ensureSfx(key);
 }
 
 export function playExploreBgm() {
@@ -117,9 +119,8 @@ export function playBattleBgm({ rift, playerLevel, foeLevel }) {
   setBgmSrc(track, battleTrackUrl(track));
 }
 
-export function playAttackSfx(moveType) {
+function playSfxKey(key) {
   if (!unlocked) return;
-  const key = sfxKeyForMoveType(moveType);
   const el = ensureSfx(key);
   if (!el) return;
   try {
@@ -128,6 +129,15 @@ export function playAttackSfx(moveType) {
     /* ignore seek errors on unloaded media */
   }
   safePlay(el);
+}
+
+export function playAttackSfx(moveType) {
+  playSfxKey(sfxKeyForMoveType(moveType));
+}
+
+/** One-shot when a catch succeeds (“咔哒！抓住了！”). */
+export function playCatchSuccessSfx() {
+  playSfxKey(CATCH_SUCCESS_KEY);
 }
 
 export function pauseBgmForHidden() {

@@ -12,3 +12,4 @@ All clips from [Mixkit](https://mixkit.co/free-sound-effects/) under the [Mixkit
 | `psychic.wav` | 2350 | Magic sparkle whoosh |
 | `dragon.wav` | 1714 | Fast rocket whoosh |
 | `normal.wav` | 2072 | Small hit in a game |
+| `catch_success.wav` | 2039 | Game success alert |

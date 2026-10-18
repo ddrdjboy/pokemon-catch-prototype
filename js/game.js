@@ -46,7 +46,7 @@ import {
   resolveFoeOnlyTurn,
 } from './battle.js';
 import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
-import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx } from './audio.js';
+import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx, playCatchSuccessSfx } from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, tryEvolve } from './level.js';
 
@@ -1662,6 +1662,7 @@ function settleThrow(hit) {
     caught: success,
     onDone() {
       if (success) {
+        playCatchSuccessSfx();
         setCatchResult('咔哒！抓住了！', 'ok');
         claimPokemon(pendingEncounter.catchTarget);
       } else {

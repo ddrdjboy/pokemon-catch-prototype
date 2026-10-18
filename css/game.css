@@ -209,6 +209,10 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  margin: 8px 0 12px;
 }
 
 .shop-item {
@@ -444,7 +448,27 @@ body {
 .shop-dialog {
   width: min(720px, 100%);
   max-height: 90vh;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#shop-modal .shop-dialog > h2,
+#shop-modal .shop-dialog > button,
+#dex-modal .shop-dialog > h2,
+#dex-modal .shop-dialog > button,
+#dex-detail-modal .shop-dialog > h2,
+#dex-detail-modal .shop-dialog > button {
+  flex-shrink: 0;
+}
+
+#shop-modal .shop-dialog > button,
+#dex-modal .shop-dialog > button,
+#dex-detail-modal .shop-dialog > button {
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  font-size: 1.05rem;
 }
 
 .dex-dialog {

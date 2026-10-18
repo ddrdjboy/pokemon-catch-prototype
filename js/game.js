@@ -61,11 +61,18 @@ import {
   advanceMazeFloor,
   buildRoamerEncounter,
   buildFloorBossEncounter,
+  SPIRIT_HALL_BOSS_BY_FLOOR,
 } from './maze.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
-const ASSET_VER = 'v2pixel192e-8bit-all';
+const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
 const spriteUrl = (path) => `${path}?${ASSET_VER}`;
+
+/** Pixel size of one maze cell; keep in sync with CSS `--maze-tile`. */
+const MAZE_TILE = 56;
+/** Visible tiles around the centered player (odd). */
+const MAZE_VIEW_W = 11;
+const MAZE_VIEW_H = 9;
 
 const BATTLE_ANIM_ORDER = ['off', 'light', 'medium', 'heavy'];
 const BATTLE_ANIM_LABEL = {
@@ -792,25 +799,102 @@ function resumeAfterMazeCatch() {
   returnAfterMazeBattle();
 }
 
+function mazeTilePx() {
+  const vp = $('maze-viewport');
+  const raw = vp ? getComputedStyle(vp).getPropertyValue('--maze-tile').trim() : '';
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : MAZE_TILE;
+}
+
+function mazeViewSize() {
+  const vp = $('maze-viewport');
+  if (!vp) return { w: MAZE_VIEW_W, h: MAZE_VIEW_H };
+  const cs = getComputedStyle(vp);
+  const w = parseInt(cs.getPropertyValue('--maze-view-w'), 10);
+  const h = parseInt(cs.getPropertyValue('--maze-view-h'), 10);
+  return {
+    w: Number.isFinite(w) && w > 0 ? w : MAZE_VIEW_W,
+    h: Number.isFinite(h) && h > 0 ? h : MAZE_VIEW_H,
+  };
+}
+
+function mazePlayerSprite() {
+  const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
+  const sp = SPECIES[lead?.speciesId];
+  return sp?.sprite || 'assets/pokemon/scorbunny.png';
+}
+
 function renderMaze() {
   if (!mazeRun) return;
   $('maze-title').textContent = `灵堂 · 第 ${mazeRun.floor} 层`;
-  const gridEl = $('maze-grid');
+  const world = $('maze-world');
+  if (!world) return;
+  const tile = mazeTilePx();
+  const view = mazeViewSize();
   const h = mazeRun.grid.length;
   const w = mazeRun.grid[0].length;
-  gridEl.style.gridTemplateColumns = `repeat(${w}, 22px)`;
-  gridEl.innerHTML = '';
-  const roamerAt = new Set(mazeRun.roamers.map((r) => `${r.x},${r.y}`));
+  world.style.width = `${w * tile}px`;
+  world.style.height = `${h * tile}px`;
+  world.innerHTML = '';
+
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
       const cell = document.createElement('div');
-      let cls = `maze-cell ${mazeRun.grid[y][x]}`;
-      if (mazeRun.player.x === x && mazeRun.player.y === y) cls += ' player';
-      if (roamerAt.has(`${x},${y}`)) cls += ' roamer';
-      cell.className = cls;
-      gridEl.appendChild(cell);
+      cell.className = `maze-tile ${mazeRun.grid[y][x]}`;
+      cell.style.left = `${x * tile}px`;
+      cell.style.top = `${y * tile}px`;
+      cell.style.width = `${tile}px`;
+      cell.style.height = `${tile}px`;
+      world.appendChild(cell);
     }
   }
+
+  for (const roamer of mazeRun.roamers) {
+    const sp = SPECIES[roamer.speciesId];
+    if (!sp) continue;
+    const img = document.createElement('img');
+    img.className = 'maze-entity roamer';
+    img.src = spriteUrl(sp.sprite);
+    img.alt = sp.name;
+    img.title = `${sp.name} Lv.${roamer.level}`;
+    img.style.left = `${roamer.x * tile}px`;
+    img.style.top = `${roamer.y * tile}px`;
+    img.style.width = `${tile * 0.82}px`;
+    img.style.height = `${tile * 0.82}px`;
+    world.appendChild(img);
+  }
+
+  if (!mazeRun.floorBossDefeated && mazeRun.stairs) {
+    const boss = SPIRIT_HALL_BOSS_BY_FLOOR[mazeRun.floor];
+    const sp = SPECIES[boss?.speciesId];
+    if (sp) {
+      const img = document.createElement('img');
+      img.className = 'maze-entity boss';
+      img.src = spriteUrl(sp.sprite);
+      img.alt = sp.name;
+      img.title = `${sp.name} Lv.${boss.level}`;
+      img.style.left = `${mazeRun.stairs.x * tile}px`;
+      img.style.top = `${mazeRun.stairs.y * tile}px`;
+      img.style.width = `${tile * 0.82}px`;
+      img.style.height = `${tile * 0.82}px`;
+      world.appendChild(img);
+    }
+  }
+
+  const playerImg = document.createElement('img');
+  playerImg.className = 'maze-entity player';
+  playerImg.src = spriteUrl(mazePlayerSprite());
+  playerImg.alt = '我方';
+  playerImg.style.left = `${mazeRun.player.x * tile}px`;
+  playerImg.style.top = `${mazeRun.player.y * tile}px`;
+  playerImg.style.width = `${tile * 0.82}px`;
+  playerImg.style.height = `${tile * 0.82}px`;
+  world.appendChild(playerImg);
+
+  // Keep the player tile centered in the viewport (camera scrolls the world).
+  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
+  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
+  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
 }
 
 function tryMazeStep(dx, dy) {

@@ -4,16 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=shopclose1" />
+  <link rel="stylesheet" href="css/game.css?v=dmgnum1" />
   <script type="importmap">
   {
     "imports": {
-      "/js/game.js": "/js/game.js?v=items1",
+      "/js/game.js": "/js/game.js?v=dmgnum1",
       "/js/items.js": "/js/items.js?v=items1",
-      "/js/audio.js": "/js/audio.js?v=catchsfx1",
-      "/js/data.js": "/js/data.js?v=items1",
-      "/js/battle.js": "/js/battle.js?v=heal2",
-      "/js/battle-fx.js": "/js/battle-fx.js?v=battlefx2",
+      "/js/audio.js": "/js/audio.js?v=dmgnum1",
+      "/js/data.js": "/js/data.js?v=dmgnum1",
+      "/js/battle.js": "/js/battle.js?v=dmgnum1",
+      "/js/battle-fx.js": "/js/battle-fx.js?v=dmgnum1",
       "/js/catch.js": "/js/catch.js?v=rift1",
       "/js/generated-content.js": "/js/generated-content.js?v=rift1",
       "/js/region-content.js": "/js/region-content.js?v=rift1"
@@ -28,11 +28,11 @@
       <div class="status">
         <button id="btn-dex" type="button">图鉴</button>
         <button id="btn-shop" type="button">商店</button>
-        <button id="btn-battle-anim" type="button" title="战斗动画：重度目前支持小火龙/炎兔儿打斗帧">动画 · 轻量</button>
         <span id="coin-display">金币 300</span>
         <span id="fruit-display">异次元果 0</span>
         <span id="twin-key-display">双子钥匙 0</span>
         <span id="charm-display" class="hidden">闪耀护符</span>
+        <button id="btn-settings" type="button">设置</button>
       </div>
     </header>
 
@@ -173,10 +173,6 @@
           <h2>捕捉！</h2>
           <span id="catch-outlook" class="catch-outlook"></span>
         </div>
-        <div id="catch-style" class="style-toggle" role="group" aria-label="捕捉方式">
-          <button type="button" data-style="flick">甩出</button>
-          <button type="button" data-style="sling">拉弓</button>
-        </div>
         <p id="catch-info" class="hint">按住底部的球，朝宝可梦甩出。</p>
         <div id="ball-picker" class="ball-picker"></div>
         <canvas id="catch-canvas" width="640" height="360"></canvas>
@@ -217,6 +213,37 @@
       </div>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=items1"></script>
+  <div id="settings-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="shop-dialog panel settings-dialog">
+      <h2 id="settings-title">设置</h2>
+      <div class="settings-list">
+        <div class="settings-row">
+          <span class="settings-label">战斗动画</span>
+          <button id="btn-battle-anim" type="button" title="战斗动画：重度目前支持小火龙/炎兔儿打斗帧">动画 · 轻量</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">伤害数字</span>
+          <button id="btn-damage-numbers" type="button">开</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">捕捉方式</span>
+          <div id="catch-style" class="style-toggle" role="group" aria-label="捕捉方式">
+            <button type="button" data-style="flick">甩出</button>
+            <button type="button" data-style="sling">拉弓</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">音乐</span>
+          <button id="btn-music" type="button">开</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">音效</span>
+          <button id="btn-sfx" type="button">开</button>
+        </div>
+      </div>
+      <button id="btn-close-settings" type="button">关闭</button>
+    </div>
+  </div>
+  <script type="module" src="js/game.js?v=dmgnum1"></script>
 </body>
 </html>

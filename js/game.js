@@ -32,6 +32,7 @@ import {
   listDexEntries,
   listDexTypes,
   getDexDetail,
+  canEnterSpiritHall,
 } from './data.js';
 import {
   ITEMS,
@@ -52,6 +53,15 @@ import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit }
 import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx, playCatchSuccessSfx } from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, tryEvolve } from './level.js';
+import {
+  createMazeRun,
+  stepMaze,
+  removeRoamer,
+  markFloorBossDefeated,
+  advanceMazeFloor,
+  buildRoamerEncounter,
+  buildFloorBossEncounter,
+} from './maze.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-8bit-all';
@@ -70,6 +80,7 @@ const $ = (id) => document.getElementById(id);
 const screens = {
   select: $('screen-select'),
   map: $('screen-map'),
+  maze: $('screen-maze'),
   pick: $('screen-pick'),
   battle: $('screen-battle'),
   catch: $('screen-catch'),
@@ -89,6 +100,7 @@ let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
 let bagSelectedItemId = null;
+let mazeRun = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -249,6 +261,7 @@ function hydrateState(parsed) {
   }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
+  s.twinCleared = !!s.twinCleared;
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
@@ -311,20 +324,26 @@ function renderSelect() {
   for (const map of Object.values(MAPS)) {
     const enc = state.encounters[map.id] || [];
     const remaining = enc.filter((e) => !state.cleared[`${map.id}:${e.id}`]).length;
-    const levels = enc.flatMap((e) => encounterLevels(e));
-    const lvMin = Math.min(...levels);
-    const lvMax = Math.max(...levels);
+    const spiritLocked = map.spiritHall && !state.twinCleared;
     const twinLocked = map.twin
       && partyOverLevelCount(state.party, TWIN_UNLOCK_LEVEL) < TWIN_UNLOCK_COUNT;
-    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked;
+    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked || spiritLocked;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${locked ? ' locked' : ''}`;
-    const meta = map.rift
-      ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
-      : map.twin
-        ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
-        : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${map.spiritHall ? ' spirit' : ''}${locked ? ' locked' : ''}`;
+    let meta;
+    if (map.spiritHall) {
+      meta = state.twinCleared ? '三层迷宫 · 已解锁' : '三层迷宫 · 需通关双子塔';
+    } else {
+      const levels = enc.flatMap((e) => encounterLevels(e));
+      const lvMin = Math.min(...levels);
+      const lvMax = Math.max(...levels);
+      meta = map.rift
+        ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
+        : map.twin
+          ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
+          : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+    }
     card.innerHTML = `
       <img src="${spriteUrl(map.image)}" alt="${map.name}" />
       <div class="meta">
@@ -680,6 +699,16 @@ function setMapNote(text) {
 
 function tryEnterMap(mapId) {
   const map = MAPS[mapId];
+  if (map.spiritHall) {
+    const gate = canEnterSpiritHall(state);
+    if (!gate.ok) {
+      renderSelect();
+      setMapNote('灵堂需先通关一次双子塔才能进入。');
+      return;
+    }
+    startMazeRun();
+    return;
+  }
   if (map.rift) {
     const spent = trySpendRiftFruit(state, partyMaxLevel(state.party));
     if (!spent.ok) {
@@ -708,6 +737,87 @@ function tryEnterMap(mapId) {
     refreshHeader();
   }
   openMap(mapId);
+}
+
+function startMazeRun() {
+  mazeRun = createMazeRun({ floor: 1 });
+  currentMapId = 'spirit_hall';
+  renderMaze();
+  showScreen('maze');
+}
+
+function endMazeRun({ message } = {}) {
+  mazeRun = null;
+  playExploreBgm();
+  showScreen('select');
+  renderSelect();
+  if (message) setMapNote(message);
+}
+
+function returnToMazeScreen() {
+  renderMaze();
+  showScreen('maze');
+  playExploreBgm();
+}
+
+function renderMaze() {
+  if (!mazeRun) return;
+  $('maze-title').textContent = `灵堂 · 第 ${mazeRun.floor} 层`;
+  const gridEl = $('maze-grid');
+  const h = mazeRun.grid.length;
+  const w = mazeRun.grid[0].length;
+  gridEl.style.gridTemplateColumns = `repeat(${w}, 22px)`;
+  gridEl.innerHTML = '';
+  const roamerAt = new Set(mazeRun.roamers.map((r) => `${r.x},${r.y}`));
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const cell = document.createElement('div');
+      let cls = `maze-cell ${mazeRun.grid[y][x]}`;
+      if (mazeRun.player.x === x && mazeRun.player.y === y) cls += ' player';
+      if (roamerAt.has(`${x},${y}`)) cls += ' roamer';
+      cell.className = cls;
+      gridEl.appendChild(cell);
+    }
+  }
+}
+
+function tryMazeStep(dx, dy) {
+  if (!mazeRun) return;
+  const { run, event } = stepMaze(mazeRun, dx, dy);
+  mazeRun = run;
+  renderMaze();
+  if (!event) return;
+  if (event.type === 'roamer') {
+    beginMazeRoamerBattle(event.roamer);
+    return;
+  }
+  if (event.type === 'stairs') {
+    if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
+    else afterFloorBossCleared();
+  }
+}
+
+function beginMazeRoamerBattle(roamer) {
+  const tmpl = buildRoamerEncounter(roamer);
+  tmpl.pokemon = createPokemon(roamer.speciesId, roamer.level, { shiny: false, boss: false });
+  tmpl.shiny = false;
+  tmpl.boss = false;
+  startPick(tmpl);
+}
+
+function beginMazeBossBattle() {
+  const tmpl = buildFloorBossEncounter(mazeRun.floor);
+  tmpl.pokemon = createPokemon(tmpl.speciesId, tmpl.level, { shiny: true, boss: true });
+  startPick(tmpl);
+}
+
+function afterFloorBossCleared() {
+  if (mazeRun.floor >= 3) {
+    endMazeRun({ message: '灵堂通关！基格尔德已被击败。' });
+    return;
+  }
+  mazeRun = advanceMazeFloor(mazeRun);
+  renderMaze();
 }
 
 function openMap(mapId) {
@@ -1660,6 +1770,9 @@ function finishBattleWin(evolved) {
     appendLog(`获得 ${enc.reward} 金币！`);
     refreshHeader();
   }
+  if (currentMapId === 'twin_towers' && enc.dual) {
+    state.twinCleared = true;
+  }
   for (const p of state.party) p.hp = p.maxHp;
   save();
   setTimeout(() => {
@@ -1901,7 +2014,32 @@ $('btn-back-select').addEventListener('click', () => {
 });
 $('btn-cancel-pick').addEventListener('click', () => {
   if (pickMode === 'catch') skipCatch();
-  else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
+  else if (pickMode === 'lead' || pickMode === 'dual-lead') {
+    if (mazeRun) returnToMazeScreen();
+    else openMap(currentMapId);
+  }
+});
+$('btn-maze-exit').addEventListener('click', () => {
+  if (!mazeRun) return;
+  endMazeRun({ message: '已退出灵堂（进度不保留）。' });
+});
+document.querySelectorAll('[data-maze-dir]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const [dx, dy] = btn.dataset.mazeDir.split(',').map(Number);
+    tryMazeStep(dx, dy);
+  });
+});
+window.addEventListener('keydown', (e) => {
+  if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;
+  const dirs = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+    W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+  };
+  const d = dirs[e.key];
+  if (!d) return;
+  e.preventDefault();
+  tryMazeStep(d[0], d[1]);
 });
 $('btn-attack').addEventListener('click', onAttack);
 $('btn-item').addEventListener('click', () => {

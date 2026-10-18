@@ -66,21 +66,22 @@ body {
   align-items: center;
 }
 
-#coin-display {
-  background: #3a3420;
-  color: var(--gold);
-  padding: 6px 12px;
-  border-radius: 999px;
+#coin-display,
+#fruit-display,
+#twin-key-display,
+#charm-display {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  line-height: 1.15;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
-#charm-display {
-  background: #3a2050;
-  color: #e1bee7;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.9rem;
-}
+#coin-display { color: var(--gold); }
+#fruit-display { color: #b2ebf2; }
+#twin-key-display { color: #ce93d8; }
+#charm-display { color: #e1bee7; }
 
 .screen.hidden, .hidden { display: none !important; }
 
@@ -1319,10 +1320,7 @@ button.danger {
     justify-content: flex-start;
   }
 
-  .status button,
-  #coin-display,
-  #fruit-display,
-  #charm-display {
+  .status button {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
@@ -1330,10 +1328,16 @@ button.danger {
     font-size: 0.9rem;
   }
 
-  #fruit-display {
-    background: #203040;
-    color: #b2ebf2;
-    border-radius: 999px;
+  #coin-display,
+  #fruit-display,
+  #twin-key-display,
+  #charm-display {
+    min-height: 0;
+    padding: 0;
+    font-size: 0.8rem;
+    line-height: 1.15;
+    background: none;
+    border-radius: 0;
   }
 
   button {

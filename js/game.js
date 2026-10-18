@@ -1786,13 +1786,14 @@ function openCatchPick() {
   showScreen('pick');
 }
 
-function leaveBattle() {
+function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
   if (inSpiritHall()) {
-    failMazeRun();
+    if (wipeMaze) failMazeRun();
+    else returnAfterMazeBattle();
     return;
   }
   openMap(currentMapId);
@@ -2090,7 +2091,7 @@ $('btn-close-bag-target')?.addEventListener('click', () => {
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   closeItemPanel();
-  leaveBattle();
+  leaveBattle({ wipeMaze: false });
 });
 $('btn-skip-catch').addEventListener('click', skipCatch);
 $('catch-style').addEventListener('click', (e) => {

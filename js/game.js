@@ -107,16 +107,10 @@ function healTargetsOnField() {
     .filter(({ mon }) => mon && mon.hp > 0 && mon.hp < mon.maxHp);
 }
 
-function canUseHealItem() {
-  if (!battle || battleBusy || continueResolver) return false;
-  if (!healTargetsOnField().length) return false;
-  return Object.keys(HEAL_ITEMS).some((id) => (state.items?.[id] || 0) > 0);
-}
-
 function updateItemButton() {
   const btn = $('btn-item');
   if (!btn) return;
-  btn.disabled = !canUseHealItem();
+  btn.disabled = false;
 }
 
 function closeItemPanel() {
@@ -126,12 +120,8 @@ function closeItemPanel() {
 function setBattleActionBusy(busy) {
   $('btn-attack').disabled = busy;
   $('btn-flee-battle').disabled = busy;
-  if (busy) {
-    $('btn-item').disabled = true;
-    closeItemPanel();
-  } else {
-    updateItemButton();
-  }
+  if (busy) closeItemPanel();
+  else updateItemButton();
 }
 
 function resetAttackButton() {
@@ -150,7 +140,7 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
-    $('btn-item').disabled = true;
+    updateItemButton();
     closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
@@ -1311,13 +1301,16 @@ async function onAttack() {
 function renderItemList() {
   const list = $('item-list');
   list.innerHTML = '';
+  const canHeal = healTargetsOnField().length > 0;
   for (const item of Object.values(HEAL_ITEMS)) {
     const owned = state.items?.[item.id] || 0;
+    if (owned <= 0) continue;
     const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
-    row.disabled = owned <= 0;
+    row.disabled = !canHeal;
+    if (!canHeal) row.title = '没有需要回复的宝可梦';
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
@@ -1327,10 +1320,16 @@ function renderItemList() {
     row.addEventListener('click', () => onUseItem(item.id));
     list.appendChild(row);
   }
+  if (!list.children.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = '没有道具';
+    list.appendChild(empty);
+  }
 }
 
 function openItemPanel() {
-  if (!canUseHealItem()) return;
+  if (!battle || battleBusy || continueResolver) return;
   renderItemList();
   $('item-panel').classList.remove('hidden');
 }

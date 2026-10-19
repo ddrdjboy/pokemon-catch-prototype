@@ -130,6 +130,63 @@ export function stepMaze(run, dx, dy) {
   return { run: next, event: null };
 }
 
+/**
+ * Four-direction path from the player to (tx, ty).
+ * Walls are blocked. Floor, stairs, and roamer tiles are walkable.
+ * Returns the cells to enter, excluding the current cell.
+ * Empty when the target is the current cell, a wall, out of bounds, or unreachable.
+ */
+export function findMazePath(run, tx, ty) {
+  const sx = run.player.x;
+  const sy = run.player.y;
+  if (sx === tx && sy === ty) return [];
+  const grid = run.grid;
+  const h = grid.length;
+  const w = grid[0]?.length ?? 0;
+  if (tx < 0 || ty < 0 || tx >= w || ty >= h) return [];
+  const target = grid[ty][tx];
+  if (!target || target === 'wall') return [];
+
+  const key = (x, y) => `${x},${y}`;
+  const prev = new Map();
+  const queue = [[sx, sy]];
+  const seen = new Set([key(sx, sy)]);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let found = false;
+  while (queue.length) {
+    const [x, y] = queue.shift();
+    if (x === tx && y === ty) {
+      found = true;
+      break;
+    }
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const cell = grid[ny][nx];
+      if (!cell || cell === 'wall') continue;
+      const k = key(nx, ny);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      prev.set(k, [x, y]);
+      queue.push([nx, ny]);
+    }
+  }
+  if (!found) return [];
+
+  const path = [];
+  let cx = tx;
+  let cy = ty;
+  while (!(cx === sx && cy === sy)) {
+    path.push({ x: cx, y: cy });
+    const from = prev.get(key(cx, cy));
+    cx = from[0];
+    cy = from[1];
+  }
+  path.reverse();
+  return path;
+}
+
 export function removeRoamer(run, roamerId) {
   return {
     ...run,

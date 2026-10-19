@@ -44,6 +44,8 @@ const sfxEls = new Map();
 let unlocked = false;
 let currentBgmKey = null;
 let pausedByVisibility = false;
+let musicEnabled = true;
+let sfxEnabled = true;
 
 export function selectBattleTrack({ rift, playerLevel, foeLevel }) {
   if (rift) return 'b2';
@@ -99,14 +101,38 @@ function setBgmSrc(key, url) {
   el.src = url;
   el.loop = true;
   el.volume = BGM_VOLUME;
-  if (unlocked) safePlay(el);
+  if (unlocked && musicEnabled) safePlay(el);
+  else if (el && !musicEnabled) el.pause();
+}
+
+export function setMusicEnabled(on) {
+  musicEnabled = !!on;
+  const el = ensureBgm();
+  if (!el) return;
+  if (!musicEnabled) {
+    el.pause();
+    return;
+  }
+  if (unlocked && el.src) safePlay(el);
+}
+
+export function setSfxEnabled(on) {
+  sfxEnabled = !!on;
+}
+
+export function isMusicEnabled() {
+  return musicEnabled;
+}
+
+export function isSfxEnabled() {
+  return sfxEnabled;
 }
 
 export function unlockAudio() {
   if (unlocked) return;
   unlocked = true;
   const el = ensureBgm();
-  if (el && el.src) safePlay(el);
+  if (el && el.src && musicEnabled) safePlay(el);
   for (const key of ALL_SFX_KEYS) ensureSfx(key);
 }
 
@@ -120,7 +146,7 @@ export function playBattleBgm({ rift, playerLevel, foeLevel }) {
 }
 
 function playSfxKey(key) {
-  if (!unlocked) return;
+  if (!unlocked || !sfxEnabled) return;
   const el = ensureSfx(key);
   if (!el) return;
   try {
@@ -148,7 +174,7 @@ export function pauseBgmForHidden() {
 }
 
 export function resumeBgmIfNeeded() {
-  if (!pausedByVisibility || !unlocked) return;
+  if (!pausedByVisibility || !unlocked || !musicEnabled) return;
   pausedByVisibility = false;
   safePlay(ensureBgm());
 }

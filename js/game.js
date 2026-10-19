@@ -6,9 +6,6 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
-  HEAL_ITEMS,
-  emptyHealItems,
-  applyHealItem,
   TWIN_KEY,
   TWIN_KEY_COST,
   TWIN_UNLOCK_LEVEL,
@@ -35,7 +32,14 @@ import {
   listDexEntries,
   listDexTypes,
   getDexDetail,
+  canEnterSpiritHall,
 } from './data.js';
+import {
+  ITEMS,
+  emptyItems,
+  applyItem,
+  itemEffectLabel,
+} from './items.js';
 import {
   nextBattleStep,
   resolveDualTurn,
@@ -45,14 +49,39 @@ import {
   resolveTurn,
   resolveFoeOnlyTurn,
 } from './battle.js';
-import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
-import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx, playCatchSuccessSfx } from './audio.js';
+import { hasFighterFrames, normalizeBattleAnim, playDamageNumber, playFighterFrameStrip, playHit } from './battle-fx.js';
+import {
+  unlockAudio,
+  playExploreBgm,
+  playBattleBgm,
+  playAttackSfx,
+  playCatchSuccessSfx,
+  setMusicEnabled,
+  setSfxEnabled,
+} from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, tryEvolve } from './level.js';
+import {
+  createMazeRun,
+  stepMaze,
+  removeRoamer,
+  markFloorBossDefeated,
+  advanceMazeFloor,
+  buildRoamerEncounter,
+  buildFloorBossEncounter,
+  SPIRIT_HALL_BOSS_BY_FLOOR,
+} from './maze.js';
+import { partyIndividualView } from './party-detail.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
-const ASSET_VER = 'v2pixel192e-8bit-all';
+const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
 const spriteUrl = (path) => `${path}?${ASSET_VER}`;
+
+/** Pixel size of one maze cell; keep in sync with CSS `--maze-tile`. */
+const MAZE_TILE = 56;
+/** Visible tiles around the centered player (odd). */
+const MAZE_VIEW_W = 11;
+const MAZE_VIEW_H = 9;
 
 const BATTLE_ANIM_ORDER = ['off', 'light', 'medium', 'heavy'];
 const BATTLE_ANIM_LABEL = {
@@ -67,6 +96,7 @@ const $ = (id) => document.getElementById(id);
 const screens = {
   select: $('screen-select'),
   map: $('screen-map'),
+  maze: $('screen-maze'),
   pick: $('screen-pick'),
   battle: $('screen-battle'),
   catch: $('screen-catch'),
@@ -85,6 +115,8 @@ let dualPickUids = [];
 let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
+let itemsUiSelectedId = null;
+let mazeRun = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -99,29 +131,92 @@ function attackLabel() {
   return '攻击';
 }
 
-function healTargetsOnField() {
+function onFieldMons() {
   if (!battle) return [];
-  const mons = battle.dual ? (battle.players || []) : [battle.player];
-  return mons
+  return battle.dual ? (battle.players || []) : [battle.player];
+}
+
+function healTargetsOnField() {
+  return onFieldMons()
     .map((mon, index) => ({ mon, index }))
     .filter(({ mon }) => mon && mon.hp > 0 && mon.hp < mon.maxHp);
 }
 
+function xpTargetsOnField() {
+  return onFieldMons()
+    .map((mon, index) => ({ mon, index }))
+    .filter(({ mon }) => mon && mon.hp > 0);
+}
+
+function reviveTargets() {
+  if (!battle) return [];
+  const field = onFieldMons()
+    .map((mon, index) => ({ mon, index, uid: battle.dual ? battle.playerUids[index] : battle.playerUid, onField: true }))
+    .filter(({ mon }) => mon && mon.hp <= 0);
+  if (field.length) return field;
+  const onFieldUids = new Set(
+    battle.dual ? (battle.playerUids || []) : [battle.playerUid],
+  );
+  return activeParty(state.party)
+    .filter((p) => p.hp <= 0 && !onFieldUids.has(p.uid))
+    .map((mon) => ({ mon, index: -1, uid: mon.uid, onField: false }));
+}
+
+function autoTargetForItem(item) {
+  if (item.effect === 'heal') {
+    const targets = healTargetsOnField();
+    if (!targets.length) return null;
+    targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
+    const t = targets[targets.length - 1];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'xp') {
+    const targets = xpTargetsOnField();
+    if (!targets.length) return null;
+    const t = targets[0];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'revive') {
+    const targets = reviveTargets();
+    return targets[0] || null;
+  }
+  return null;
+}
+
+function ownedItemUsableInBattle(item) {
+  return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
+}
+
+function isBattleScreenActive() {
+  return !!battle && !screens.battle.classList.contains('hidden');
+}
+
 function updateItemButton() {
-  const btn = $('btn-item');
+  const btn = $('btn-items');
   if (!btn) return;
   btn.disabled = false;
 }
 
+function closeItemsModal() {
+  itemsUiSelectedId = null;
+  $('items-modal')?.classList.add('hidden');
+  $('items-step-list')?.classList.remove('hidden');
+  $('items-step-target')?.classList.add('hidden');
+  const title = $('items-title');
+  if (title) title.textContent = '道具';
+}
+
 function closeItemPanel() {
-  $('item-panel')?.classList.add('hidden');
+  closeItemsModal();
 }
 
 function setBattleActionBusy(busy) {
   $('btn-attack').disabled = busy;
   $('btn-flee-battle').disabled = busy;
   if (busy) closeItemPanel();
-  else updateItemButton();
+  updateItemButton();
 }
 
 function resetAttackButton() {
@@ -140,7 +235,6 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
-    updateItemButton();
     closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
@@ -148,6 +242,7 @@ function waitForContinue(message) {
       continueResolver = null;
       resolve();
     };
+    updateItemButton();
   });
 }
 
@@ -176,19 +271,23 @@ function hydrateState(parsed) {
     ...base,
     ...parsed,
     balls: { ...base.balls, ...(parsed.balls || {}) },
-    items: { ...emptyHealItems(), ...(parsed.items || {}) },
+    items: { ...emptyItems(), ...(parsed.items || {}) },
     party: trimParty((parsed.party || base.party).map((p) => ({ ...p }))),
     cleared: { ...(parsed.cleared || {}) },
     encounters: { ...(parsed.encounters || {}) },
   };
-  for (const id of Object.keys(HEAL_ITEMS)) {
+  for (const id of Object.keys(ITEMS)) {
     s.items[id] = Math.max(0, Math.floor(Number(s.items[id]) || 0));
   }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
+  s.twinCleared = !!s.twinCleared;
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
+  s.damageNumbers = s.damageNumbers !== false;
+  s.musicEnabled = s.musicEnabled !== false;
+  s.sfxEnabled = s.sfxEnabled !== false;
   if (s.balls.dusk) {
     s.balls.ultra = (s.balls.ultra || 0) + s.balls.dusk;
     delete s.balls.dusk;
@@ -229,15 +328,40 @@ function showScreen(name) {
   for (const [key, el] of Object.entries(screens)) {
     el.classList.toggle('hidden', key !== name);
   }
+  updateItemButton();
 }
 
 function refreshHeader() {
-  $('coin-display').textContent = `金币 ${state.coins}`;
-  $('fruit-display').textContent = `异次元果 ${state.riftFruit || 0}`;
+  $('coin-display').innerHTML = `<span class="coin-icon" aria-hidden="true"></span>${state.coins}`;
+  $('fruit-display').textContent = `🍇 ${state.riftFruit || 0}`;
   const twinEl = $('twin-key-display');
-  if (twinEl) twinEl.textContent = `双子钥匙 ${state.twinKeys || 0}`;
+  if (twinEl) twinEl.textContent = `🔑 ${state.twinKeys || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
+}
+
+function applyAudioSettings() {
+  setMusicEnabled(state.musicEnabled !== false);
+  setSfxEnabled(state.sfxEnabled !== false);
+}
+
+function openSettings() {
+  refreshSettingsPanel();
+  $('settings-modal').classList.remove('hidden');
+}
+
+function closeSettings() {
+  $('settings-modal').classList.add('hidden');
+}
+
+function refreshSettingsPanel() {
   refreshBattleAnimButton();
+  renderCatchStyle();
+  const musicBtn = $('btn-music');
+  const sfxBtn = $('btn-sfx');
+  const numBtn = $('btn-damage-numbers');
+  if (musicBtn) musicBtn.textContent = state.musicEnabled !== false ? '开' : '关';
+  if (sfxBtn) sfxBtn.textContent = state.sfxEnabled !== false ? '开' : '关';
+  if (numBtn) numBtn.textContent = state.damageNumbers !== false ? '开' : '关';
 }
 
 function renderSelect() {
@@ -248,20 +372,26 @@ function renderSelect() {
   for (const map of Object.values(MAPS)) {
     const enc = state.encounters[map.id] || [];
     const remaining = enc.filter((e) => !state.cleared[`${map.id}:${e.id}`]).length;
-    const levels = enc.flatMap((e) => encounterLevels(e));
-    const lvMin = Math.min(...levels);
-    const lvMax = Math.max(...levels);
+    const spiritLocked = map.spiritHall && !state.twinCleared;
     const twinLocked = map.twin
       && partyOverLevelCount(state.party, TWIN_UNLOCK_LEVEL) < TWIN_UNLOCK_COUNT;
-    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked;
+    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked || spiritLocked;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${locked ? ' locked' : ''}`;
-    const meta = map.rift
-      ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
-      : map.twin
-        ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
-        : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${map.spiritHall ? ' spirit' : ''}${locked ? ' locked' : ''}`;
+    let meta;
+    if (map.spiritHall) {
+      meta = state.twinCleared ? '三层迷宫 · 已解锁' : '三层迷宫 · 需通关双子塔';
+    } else {
+      const levels = enc.flatMap((e) => encounterLevels(e));
+      const lvMin = Math.min(...levels);
+      const lvMax = Math.max(...levels);
+      meta = map.rift
+        ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
+        : map.twin
+          ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
+          : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+    }
     card.innerHTML = `
       <img src="${spriteUrl(map.image)}" alt="${map.name}" />
       <div class="meta">
@@ -297,19 +427,18 @@ function renderShop() {
       },
     }));
   }
-  for (const item of Object.values(HEAL_ITEMS)) {
-    const healLabel = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+  for (const item of Object.values(ITEMS)) {
     shop.appendChild(shopItem({
       title: item.name,
       icon: item.icon,
       price: item.price,
       owned: state.items?.[item.id] || 0,
       disabled: state.coins < item.price,
-      label: healLabel,
+      label: itemEffectLabel(item),
       onBuy: () => {
         if (state.coins < item.price) return;
         state.coins -= item.price;
-        if (!state.items) state.items = emptyHealItems();
+        if (!state.items) state.items = emptyItems();
         state.items[item.id] = (state.items[item.id] || 0) + 1;
         afterPurchase();
       },
@@ -414,7 +543,7 @@ function renderDex() {
   }
 }
 
-function renderDexDetail(detail) {
+function renderDexDetail(detail, mon = null) {
   const root = $('dex-detail');
   const catchPct = Math.round((detail.catchRate ?? 0) * 100);
   const moveLines = detail.moves
@@ -424,12 +553,25 @@ function renderDexDetail(detail) {
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`
     : '进化：无';
   const canAnim = hasFighterFrames(detail.id);
+  const individual = partyIndividualView(mon);
+  const individualHtml = individual
+    ? `<div class="individual">
+        <div>个体：Lv.${individual.level} · HP ${individual.hpText}</div>
+        <div>能力：攻 ${individual.atk} · 防 ${individual.def} · 速 ${individual.spd}</div>
+        <div>经验：${individual.expText}</div>
+        <div class="meta">
+          ${individual.shiny ? '<span class="tag shiny">闪光</span>' : ''}
+          ${individual.fainted ? '<span class="tag">倒地</span>' : ''}
+        </div>
+      </div>`
+    : '';
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
     <div class="dex-hero-wrap">
       <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
     </div>
     ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
+    ${individualHtml}
     <div class="meta">
       <span class="tag type">${typeLabel(detail.type)}</span>
       ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
@@ -453,11 +595,16 @@ function renderDexDetail(detail) {
   }
 }
 
-function openDexDetail(speciesId) {
+function openDexDetail(speciesId, mon = null) {
   const detail = getDexDetail(speciesId, SPECIES);
   if (!detail) return;
-  renderDexDetail(detail);
+  renderDexDetail(detail, mon);
   $('dex-detail-modal').classList.remove('hidden');
+}
+
+function openPartyDetail(mon) {
+  closePartyPopover();
+  openDexDetail(mon.speciesId, mon);
 }
 
 function closeDexDetail() {
@@ -543,6 +690,7 @@ function buildPartyPopover(mon, index) {
     });
     pop.appendChild(btn);
   };
+  add('详情', false, '', () => openPartyDetail(mon));
   add('左移', !canShiftParty(mon.uid, -1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, -1)));
   add('右移', !canShiftParty(mon.uid, 1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, 1)));
   if (active) {
@@ -618,6 +766,16 @@ function setMapNote(text) {
 
 function tryEnterMap(mapId) {
   const map = MAPS[mapId];
+  if (map.spiritHall) {
+    const gate = canEnterSpiritHall(state);
+    if (!gate.ok) {
+      renderSelect();
+      setMapNote('灵堂需先通关一次双子塔才能进入。');
+      return;
+    }
+    startMazeRun();
+    return;
+  }
   if (map.rift) {
     const spent = trySpendRiftFruit(state, partyMaxLevel(state.party));
     if (!spent.ok) {
@@ -646,6 +804,252 @@ function tryEnterMap(mapId) {
     refreshHeader();
   }
   openMap(mapId);
+}
+
+function startMazeRun() {
+  mazeRun = createMazeRun({ floor: 1 });
+  currentMapId = 'spirit_hall';
+  renderMaze();
+  showScreen('maze');
+}
+
+function endMazeRun({ message } = {}) {
+  mazeRun = null;
+  playExploreBgm();
+  showScreen('select');
+  renderSelect();
+  if (message) setMapNote(message);
+}
+
+function inSpiritHall() {
+  return !!mazeRun && currentMapId === 'spirit_hall';
+}
+
+function returnAfterMazeBattle() {
+  if (!inSpiritHall()) {
+    openMap(currentMapId);
+    return;
+  }
+  renderMaze();
+  showScreen('maze');
+  playExploreBgm();
+}
+
+function failMazeRun() {
+  endMazeRun({ message: '队伍全灭，已离开灵堂。下次从第 1 层重新开始。' });
+}
+
+function resumeAfterMazeCatch() {
+  if (!inSpiritHall()) {
+    openMap(currentMapId);
+    return;
+  }
+  const tag = pendingEncounter?.maze;
+  if (tag?.kind === 'roamer') {
+    mazeRun = removeRoamer(mazeRun, tag.roamerId);
+    returnAfterMazeBattle();
+    return;
+  }
+  if (tag?.kind === 'boss') {
+    mazeRun = markFloorBossDefeated(mazeRun);
+    afterFloorBossCleared(); // may call endMazeRun on floor 3
+    if (mazeRun) returnAfterMazeBattle();
+    return;
+  }
+  returnAfterMazeBattle();
+}
+
+function mazeTilePx() {
+  const vp = $('maze-viewport');
+  const raw = vp ? getComputedStyle(vp).getPropertyValue('--maze-tile').trim() : '';
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : MAZE_TILE;
+}
+
+function mazeViewSize() {
+  const vp = $('maze-viewport');
+  if (!vp) return { w: MAZE_VIEW_W, h: MAZE_VIEW_H };
+  const cs = getComputedStyle(vp);
+  const w = parseInt(cs.getPropertyValue('--maze-view-w'), 10);
+  const h = parseInt(cs.getPropertyValue('--maze-view-h'), 10);
+  return {
+    w: Number.isFinite(w) && w > 0 ? w : MAZE_VIEW_W,
+    h: Number.isFinite(h) && h > 0 ? h : MAZE_VIEW_H,
+  };
+}
+
+const MAZE_HELP_TEXT = '点击角色相邻格子移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
+
+let mazeToastTimer = null;
+let appToastTimer = null;
+
+function mazePlayerSprite() {
+  const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
+  const sp = SPECIES[lead?.speciesId];
+  return sp?.sprite || 'assets/pokemon/scorbunny.png';
+}
+
+function showMazeToast(text, ms = 4200) {
+  const el = $('maze-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (mazeToastTimer) clearTimeout(mazeToastTimer);
+  mazeToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    mazeToastTimer = null;
+  }, ms);
+}
+
+function showAppToast(text, ms = 4000) {
+  const el = $('app-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    appToastTimer = null;
+  }, ms);
+}
+
+function onMazeTileClick(x, y) {
+  if (!mazeRun) return;
+  const dx = x - mazeRun.player.x;
+  const dy = y - mazeRun.player.y;
+  if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+  tryMazeStep(dx, dy);
+}
+
+function renderMaze() {
+  if (!mazeRun) return;
+  $('maze-title').textContent = `灵堂 · 第 ${mazeRun.floor} 层`;
+  const world = $('maze-world');
+  if (!world) return;
+  const tile = mazeTilePx();
+  const view = mazeViewSize();
+  const h = mazeRun.grid.length;
+  const w = mazeRun.grid[0].length;
+  const px = mazeRun.player.x;
+  const py = mazeRun.player.y;
+  world.style.width = `${w * tile}px`;
+  world.style.height = `${h * tile}px`;
+  world.innerHTML = '';
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const kind = mazeRun.grid[y][x];
+      const cell = document.createElement('div');
+      const dx = x - px;
+      const dy = y - py;
+      const adjacent = Math.abs(dx) + Math.abs(dy) === 1 && kind !== 'wall';
+      let dirClass = '';
+      if (adjacent) {
+        if (dy === -1) dirClass = ' adjacent-n';
+        else if (dy === 1) dirClass = ' adjacent-s';
+        else if (dx === -1) dirClass = ' adjacent-w';
+        else if (dx === 1) dirClass = ' adjacent-e';
+      }
+      cell.className = `maze-tile ${kind}${adjacent ? ` adjacent${dirClass}` : ''}`;
+      cell.style.left = `${x * tile}px`;
+      cell.style.top = `${y * tile}px`;
+      cell.style.width = `${tile}px`;
+      cell.style.height = `${tile}px`;
+      if (adjacent) {
+        cell.dataset.mazeX = String(x);
+        cell.dataset.mazeY = String(y);
+        cell.addEventListener('click', () => onMazeTileClick(x, y));
+      }
+      world.appendChild(cell);
+    }
+  }
+
+  for (const roamer of mazeRun.roamers) {
+    const sp = SPECIES[roamer.speciesId];
+    if (!sp) continue;
+    const img = document.createElement('img');
+    img.className = 'maze-entity roamer';
+    img.src = spriteUrl(sp.sprite);
+    img.alt = sp.name;
+    img.title = `${sp.name} Lv.${roamer.level}`;
+    img.style.left = `${roamer.x * tile}px`;
+    img.style.top = `${roamer.y * tile}px`;
+    img.style.width = `${tile * 0.82}px`;
+    img.style.height = `${tile * 0.82}px`;
+    world.appendChild(img);
+  }
+
+  if (!mazeRun.floorBossDefeated && mazeRun.stairs) {
+    const boss = SPIRIT_HALL_BOSS_BY_FLOOR[mazeRun.floor];
+    const sp = SPECIES[boss?.speciesId];
+    if (sp) {
+      const img = document.createElement('img');
+      img.className = 'maze-entity boss';
+      img.src = spriteUrl(sp.sprite);
+      img.alt = sp.name;
+      img.title = `${sp.name} Lv.${boss.level}`;
+      img.style.left = `${mazeRun.stairs.x * tile}px`;
+      img.style.top = `${mazeRun.stairs.y * tile}px`;
+      img.style.width = `${tile * 0.82}px`;
+      img.style.height = `${tile * 0.82}px`;
+      world.appendChild(img);
+    }
+  }
+
+  const playerImg = document.createElement('img');
+  playerImg.className = 'maze-entity player';
+  playerImg.src = spriteUrl(mazePlayerSprite());
+  playerImg.alt = '我方';
+  playerImg.style.left = `${mazeRun.player.x * tile}px`;
+  playerImg.style.top = `${mazeRun.player.y * tile}px`;
+  playerImg.style.width = `${tile * 0.82}px`;
+  playerImg.style.height = `${tile * 0.82}px`;
+  world.appendChild(playerImg);
+
+  // Keep the player tile centered in the viewport (camera scrolls the world).
+  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
+  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
+  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
+}
+
+function tryMazeStep(dx, dy) {
+  if (!mazeRun) return;
+  const { run, event } = stepMaze(mazeRun, dx, dy);
+  mazeRun = run;
+  renderMaze();
+  if (!event) return;
+  if (event.type === 'roamer') {
+    beginMazeRoamerBattle(event.roamer);
+    return;
+  }
+  if (event.type === 'stairs') {
+    if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
+    else afterFloorBossCleared();
+  }
+}
+
+function beginMazeRoamerBattle(roamer) {
+  const tmpl = buildRoamerEncounter(roamer);
+  tmpl.pokemon = createPokemon(roamer.speciesId, roamer.level, { shiny: false, boss: false });
+  tmpl.shiny = false;
+  tmpl.boss = false;
+  startPick(tmpl);
+}
+
+function beginMazeBossBattle() {
+  const tmpl = buildFloorBossEncounter(mazeRun.floor);
+  tmpl.pokemon = createPokemon(tmpl.speciesId, tmpl.level, { shiny: true, boss: true });
+  startPick(tmpl);
+}
+
+function afterFloorBossCleared() {
+  if (mazeRun.floor >= 3) {
+    endMazeRun({ message: '灵堂通关！基格尔德已被击败。' });
+    return;
+  }
+  mazeRun = advanceMazeFloor(mazeRun);
+  renderMaze();
 }
 
 function openMap(mapId) {
@@ -875,11 +1279,13 @@ function fillDualSlot(playerMon) {
 function renderSprite(wrapId, mon) {
   const wrap = $(wrapId);
   const sp = SPECIES[mon.speciesId];
+  const floats = [...wrap.querySelectorAll('.fx-num')];
   wrap.className = `sprite-wrap${mon.shiny ? ' shiny' : ''}`;
   wrap.innerHTML = `<img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" />`;
   if (mon.boss) {
     wrap.innerHTML += '<div class="boss-eyes"><span></span><span></span></div>';
   }
+  for (const num of floats) wrap.appendChild(num);
 }
 
 function renderFighterSlot(side, index, mon) {
@@ -1089,6 +1495,7 @@ async function playDualTurnHits(turn) {
       }
     }
     syncBattleHp();
+    showLineNumber(line);
     await wait(HP_ANIM_MS);
     if (battle.foes.every((f) => f.hp <= 0)) {
       await waitForContinue('两只 Boss 都倒下了！');
@@ -1142,6 +1549,7 @@ async function playTurnHits(turn, startPlayer, startFoe) {
       setHpBar('player-hp', playerHp, battle.player.maxHp);
     }
     syncBattleHp();
+    showLineNumber(line);
     await wait(HP_ANIM_MS);
 
     if (playerWasUp && playerHp <= 0) playerFell = true;
@@ -1162,6 +1570,24 @@ async function playTurnHits(turn, startPlayer, startFoe) {
   if (turn.allies) battle.allies = turn.allies.map((ally) => ({ ...ally }));
   syncBattleHp();
   renderAllies();
+}
+
+function showLineNumber(line) {
+  const { defenderEl } = battleHitElements(line);
+  playDamageNumber(defenderEl, {
+    amount: line.damage,
+    typeMult: line.typeMult,
+    crit: !!line.crit,
+    enabled: state.damageNumbers !== false,
+  });
+}
+
+function showHealNumber(anchorEl, amount) {
+  playDamageNumber(anchorEl, {
+    amount,
+    heal: true,
+    enabled: state.damageNumbers !== false,
+  });
 }
 
 function grantRiftFruit(foe) {
@@ -1298,71 +1724,59 @@ async function onAttack() {
   }
 }
 
-function renderItemList() {
-  const list = $('item-list');
-  list.innerHTML = '';
-  const canHeal = healTargetsOnField().length > 0;
-  for (const item of Object.values(HEAL_ITEMS)) {
-    const owned = state.items?.[item.id] || 0;
-    if (owned <= 0) continue;
-    const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'item-row';
-    row.disabled = !canHeal;
-    if (!canHeal) row.title = '没有需要回复的宝可梦';
-    row.innerHTML = `
-      <span class="item-icon">${item.icon}</span>
-      <span class="item-name">${item.name}</span>
-      <span class="item-effect">${effect}</span>
-      <span class="item-owned">×${owned}</span>
-    `;
-    row.addEventListener('click', () => onUseItem(item.id));
-    list.appendChild(row);
-  }
-  if (!list.children.length) {
-    const empty = document.createElement('p');
-    empty.className = 'hint';
-    empty.textContent = '没有道具';
-    list.appendChild(empty);
-  }
-}
-
-function openItemPanel() {
-  if (!battle || battleBusy || continueResolver) return;
-  renderItemList();
-  $('item-panel').classList.remove('hidden');
-}
-
 async function onUseItem(itemId) {
   if (!battle || battleBusy || continueResolver) return;
-  const item = HEAL_ITEMS[itemId];
-  if (!item) return;
-  if ((state.items?.[itemId] || 0) <= 0) return;
-  const targets = healTargetsOnField();
-  if (!targets.length) return;
-  targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
-  const { mon: fieldMon, index: slot } = targets[targets.length - 1];
-  const uid = battle.dual ? battle.playerUids[slot] : battle.playerUid;
-  const fighter = state.party.find((p) => p.uid === uid);
-  if (!fighter || fighter.hp <= 0 || fighter.hp >= fighter.maxHp) return;
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  const target = autoTargetForItem(item);
+  if (!target) return;
+
+  const fighter = state.party.find((p) => p.uid === target.uid);
+  if (!fighter) return;
+
+  if (target.onField && target.index >= 0) {
+    const fieldMon = onFieldMons()[target.index];
+    if (fieldMon) fighter.hp = fieldMon.hp;
+  }
 
   closeItemPanel();
   battleBusy = true;
   setBattleActionBusy(true);
 
-  state.items[itemId] -= 1;
-  fighter.hp = fieldMon.hp;
-  const amount = applyHealItem(fighter, itemId);
-  if (battle.dual) {
-    battle.players[slot] = { ...fighter };
-    battle.player = battle.players[0];
-  } else {
-    battle.player = { ...fighter };
+  const result = applyItem(fighter, itemId);
+  if (!result.ok) {
+    battleBusy = false;
+    setBattleActionBusy(false);
+    return;
   }
-  appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${amount} 点 HP！`);
+  state.items[itemId] -= 1;
+
+  if (target.onField && target.index >= 0) {
+    if (battle.dual) {
+      battle.players[target.index] = { ...fighter };
+      battle.player = battle.players[0];
+    } else {
+      battle.player = { ...fighter };
+    }
+  }
+
+  if (result.kind === 'heal') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 复活了！（HP ${fighter.hp}/${fighter.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    appendLog(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) appendLog(line);
+  }
   save();
   renderBattle();
+  if (result.kind === 'heal' || result.kind === 'revive') {
+    const healAmt = result.kind === 'heal' ? result.amount : fighter.hp;
+    const wrap = battle.dual && target.index >= 0
+      ? slotWrap('player', target.index)
+      : $('player-sprite-wrap');
+    showHealNumber(wrap, healAmt);
+  }
 
   try {
     if (battle.dual) {
@@ -1385,6 +1799,104 @@ async function onUseItem(itemId) {
     console.error(err);
     resetAttackButton();
   }
+}
+
+function monAcceptsItem(mon, item) {
+  if (!mon || !item) return false;
+  if (item.effect === 'heal') return mon.hp > 0 && mon.hp < mon.maxHp;
+  if (item.effect === 'revive') return mon.hp <= 0;
+  if (item.effect === 'xp') return true;
+  return false;
+}
+
+function renderItemsModalList() {
+  const list = $('items-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const inBattle = isBattleScreenActive();
+  for (const item of Object.values(ITEMS)) {
+    const owned = state.items?.[item.id] || 0;
+    if (owned <= 0) continue;
+    const usable = inBattle
+      ? ownedItemUsableInBattle(item)
+      : state.party.some((m) => monAcceptsItem(m, item));
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'item-row';
+    row.disabled = !usable;
+    if (!usable) row.title = '现在不能使用';
+    row.innerHTML = `
+      <span class="item-icon">${item.icon}</span>
+      <span class="item-name">${item.name}</span>
+      <span class="item-effect">${itemEffectLabel(item)}</span>
+      <span class="item-owned">×${owned}</span>
+    `;
+    row.addEventListener('click', () => {
+      if (inBattle) onUseItem(item.id);
+      else openItemsTargetPicker(item.id);
+    });
+    list.appendChild(row);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = '没有道具';
+    list.appendChild(empty);
+  }
+}
+
+function openItemsTargetPicker(itemId) {
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  itemsUiSelectedId = itemId;
+  const list = $('items-target-list');
+  list.innerHTML = '';
+  for (const mon of state.party) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'party-card';
+    const ok = monAcceptsItem(mon, item);
+    btn.disabled = !ok;
+    const sp = SPECIES[mon.speciesId];
+    btn.textContent = `${sp?.name || mon.speciesId} Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`;
+    btn.addEventListener('click', () => onItemsUseOutOfBattle(mon.uid));
+    list.appendChild(btn);
+  }
+  $('items-step-list').classList.add('hidden');
+  $('items-step-target').classList.remove('hidden');
+  $('items-title').textContent = '选择宝可梦';
+}
+
+function onItemsUseOutOfBattle(uid) {
+  const item = ITEMS[itemsUiSelectedId];
+  const mon = state.party.find((p) => p.uid === uid);
+  if (!item || !mon || (state.items?.[item.id] || 0) <= 0) return;
+  if (!monAcceptsItem(mon, item)) return;
+  const result = applyItem(mon, item.id);
+  if (!result.ok) return;
+  state.items[item.id] -= 1;
+  const lines = [];
+  if (result.kind === 'heal') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 复活了！（HP ${mon.hp}/${mon.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    lines.push(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) lines.push(line);
+  }
+  showAppToast(lines.join(' '));
+  save();
+  renderParty($('party-list'), false);
+  closeItemsModal();
+}
+
+function openItemsUi() {
+  if (isBattleScreenActive() && (battleBusy || continueResolver)) return;
+  $('items-title').textContent = '道具';
+  $('items-step-list').classList.remove('hidden');
+  $('items-step-target').classList.add('hidden');
+  renderItemsModalList();
+  $('items-modal').classList.remove('hidden');
 }
 
 function awardXp(foe) {
@@ -1484,12 +1996,22 @@ function openCatchPick() {
   showScreen('pick');
 }
 
-function leaveBattle() {
+function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
+  battle = null;
+  battleBusy = false;
+  continueResolver = null;
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
+  if (inSpiritHall()) {
+    if (wipeMaze) failMazeRun();
+    else returnAfterMazeBattle();
+    updateItemButton();
+    return;
+  }
   openMap(currentMapId);
+  updateItemButton();
 }
 
 function finishBattleWin(evolved) {
@@ -1499,6 +2021,9 @@ function finishBattleWin(evolved) {
     state.coins += enc.reward;
     appendLog(`获得 ${enc.reward} 金币！`);
     refreshHeader();
+  }
+  if (currentMapId === 'twin_towers' && enc.dual) {
+    state.twinCleared = true;
   }
   for (const p of state.party) p.hp = p.maxHp;
   save();
@@ -1549,8 +2074,10 @@ function updateCatchCopy() {
 }
 
 function renderCatchStyle() {
+  const root = $('catch-style');
+  if (!root) return;
   const busy = !!catchCtrl?.isBusy();
-  for (const btn of $('catch-style').querySelectorAll('button')) {
+  for (const btn of root.querySelectorAll('button')) {
     btn.classList.toggle('selected', btn.dataset.style === state.catchStyle);
     btn.disabled = busy;
   }
@@ -1694,7 +2221,7 @@ function claimPokemon(foe) {
       catchCtrl.destroy();
       catchCtrl = null;
     }
-    openMap(currentMapId);
+    resumeAfterMazeCatch();
   }, 1000);
 }
 
@@ -1705,7 +2232,7 @@ function skipCatch() {
     catchCtrl.destroy();
     catchCtrl = null;
   }
-  openMap(currentMapId);
+  resumeAfterMazeCatch();
 }
 
 function refreshAllEncounters() {
@@ -1741,19 +2268,40 @@ $('btn-back-select').addEventListener('click', () => {
 });
 $('btn-cancel-pick').addEventListener('click', () => {
   if (pickMode === 'catch') skipCatch();
-  else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
+  else returnAfterMazeBattle();
+});
+$('btn-maze-exit').addEventListener('click', () => {
+  if (!mazeRun) return;
+  endMazeRun({ message: '已退出灵堂（进度不保留）。' });
+});
+$('btn-maze-info')?.addEventListener('click', () => {
+  showMazeToast(MAZE_HELP_TEXT);
+});
+$('btn-party-info')?.addEventListener('click', () => {
+  showAppToast(PARTY_HELP_TEXT);
+});
+window.addEventListener('keydown', (e) => {
+  if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;
+  const dirs = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+    W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+  };
+  const d = dirs[e.key];
+  if (!d) return;
+  e.preventDefault();
+  tryMazeStep(d[0], d[1]);
 });
 $('btn-attack').addEventListener('click', onAttack);
-$('btn-item').addEventListener('click', () => {
-  if (battleBusy || continueResolver) return;
-  if ($('item-panel').classList.contains('hidden')) openItemPanel();
-  else closeItemPanel();
+$('btn-items')?.addEventListener('click', openItemsUi);
+$('btn-close-items')?.addEventListener('click', closeItemsModal);
+$('items-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('items-modal')) closeItemsModal();
 });
-$('btn-close-items').addEventListener('click', closeItemPanel);
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   closeItemPanel();
-  leaveBattle();
+  leaveBattle({ wipeMaze: false });
 });
 $('btn-skip-catch').addEventListener('click', skipCatch);
 $('catch-style').addEventListener('click', (e) => {
@@ -1764,7 +2312,7 @@ $('catch-style').addEventListener('click', (e) => {
   state.catchStyle = style;
   save();
   renderCatchStyle();
-  updateCatchCopy();
+  if (!$('screen-catch').classList.contains('hidden')) updateCatchCopy();
 });
 $('btn-dex').addEventListener('click', openDex);
 $('btn-close-dex').addEventListener('click', closeDex);
@@ -1776,12 +2324,34 @@ $('dex-detail-modal').addEventListener('click', (e) => {
   if (e.target === $('dex-detail-modal')) closeDexDetail();
 });
 $('btn-shop').addEventListener('click', openShop);
+$('btn-settings').addEventListener('click', openSettings);
+$('btn-close-settings').addEventListener('click', closeSettings);
+$('settings-modal').addEventListener('click', (e) => {
+  if (e.target === $('settings-modal')) closeSettings();
+});
 $('btn-battle-anim').addEventListener('click', () => {
   const cur = normalizeBattleAnim(state.battleAnim);
   const idx = BATTLE_ANIM_ORDER.indexOf(cur);
   state.battleAnim = BATTLE_ANIM_ORDER[(idx + 1) % BATTLE_ANIM_ORDER.length];
   save();
   refreshBattleAnimButton();
+});
+$('btn-damage-numbers').addEventListener('click', () => {
+  state.damageNumbers = !(state.damageNumbers !== false);
+  save();
+  refreshSettingsPanel();
+});
+$('btn-music').addEventListener('click', () => {
+  state.musicEnabled = !(state.musicEnabled !== false);
+  applyAudioSettings();
+  save();
+  refreshSettingsPanel();
+});
+$('btn-sfx').addEventListener('click', () => {
+  state.sfxEnabled = !(state.sfxEnabled !== false);
+  applyAudioSettings();
+  save();
+  refreshSettingsPanel();
 });
 $('btn-close-shop').addEventListener('click', closeShop);
 $('shop-modal').addEventListener('click', (e) => {
@@ -1805,6 +2375,7 @@ document.addEventListener('pointerdown', () => {
 document.addEventListener('dblclick', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
+applyAudioSettings();
 save();
 showScreen('select');
 renderSelect();

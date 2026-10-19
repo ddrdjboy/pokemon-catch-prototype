@@ -553,8 +553,13 @@ function renderDex() {
 function renderDexDetail(detail, mon = null) {
   const root = $('dex-detail');
   const catchPct = Math.round((detail.catchRate ?? 0) * 100);
+  const effectLabel = { heal: '回复', atk: '加攻', def: '加防' };
   const moveLines = detail.moves
-    .map((m) => `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`)
+    .map((m) => (
+      m.effect
+        ? `<li>${m.name}（${effectLabel[m.effect]}）</li>`
+        : `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`
+    ))
     .join('');
   const evo = detail.evolvesToName
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`

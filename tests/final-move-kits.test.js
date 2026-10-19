@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { SPECIES } from '../js/data.js';
+import { SPECIES, getDexDetail } from '../js/data.js';
 
 const EXPECTED = {
   mega_beedrill: [['飞弹针', 89, 'bug'], ['地震', 74, 'ground'], ['剑舞', 0, 'normal', 'atk']],
@@ -65,3 +65,9 @@ assert.equal(SPECIES.charizard.moves, undefined);
 assert.equal(SPECIES.charizard.move.name, '喷射火焰');
 assert.equal(SPECIES.charmander.moves, undefined);
 assert.equal(SPECIES.cyndaquil.moves, undefined);
+
+const detail = getDexDetail('mega_charizard');
+assert.equal(detail.moves.length, 3);
+assert.equal(detail.moves[2].effect, 'atk');
+assert.equal(detail.moves[0].effect, undefined);
+assert.equal(getDexDetail('charmander').moves[0].effect, undefined);

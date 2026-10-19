@@ -72,7 +72,7 @@ import {
   buildRoamerEncounter,
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
-} from './maze.js?v=mazeclick1';
+} from './maze.js?v=mazespeed1';
 import { partyIndividualView } from './party-detail.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
@@ -894,7 +894,7 @@ function mazeViewSize() {
 }
 
 const MAZE_HELP_TEXT = '点任意可走格子，角色会自动走过去。也可以用左侧摇杆移动。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
-const MAZE_STEP_MS = 140;
+const MAZE_STEP_MS = 320;
 const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
 
 let mazeToastTimer = null;

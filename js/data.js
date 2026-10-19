@@ -1,6 +1,7 @@
 /** Game content: species, maps, balls, type chart. */
 import { GENERATED_SPECIES, GENERATED_MAPS } from './generated-content.js';
 import { REGION_SPECIES, REGION_MAPS } from './region-content.js';
+import { applyFinalMoveKits } from './final-move-kits.js';
 
 const BASE_SPECIES = {
   scorbunny: {
@@ -252,7 +253,7 @@ const BASE_SPECIES = {
   },
 };
 
-export const SPECIES = { ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES };
+export const SPECIES = applyFinalMoveKits({ ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES });
 
 /** Distinct type ids present in the dex, sorted alphabetically. */
 export function listDexTypes(species = SPECIES) {

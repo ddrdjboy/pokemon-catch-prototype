@@ -116,8 +116,8 @@ export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
 
   if (f.hp > 0 && living().length) {
     const kit = speciesMoves(f.speciesId);
-    const heavies = kit.filter((move) => !move.aoe);
-    const waves = kit.filter((move) => move.aoe);
+    const heavies = kit.filter((move) => !move.aoe && !move.effect);
+    const waves = kit.filter((move) => move.aoe && !move.effect);
     const heavy = heavies[Math.min(heavies.length - 1, Math.floor(rng() * heavies.length))] || kit[0];
     castBossMove(f, heavy, living(), logs, rng);
     if (living().length) {
@@ -179,8 +179,8 @@ export function resolveSquadItemTurn(player, allies, foe, rng = Math.random) {
 
   if (f.hp > 0 && living().length) {
     const kit = speciesMoves(f.speciesId);
-    const heavies = kit.filter((move) => !move.aoe);
-    const waves = kit.filter((move) => move.aoe);
+    const heavies = kit.filter((move) => !move.aoe && !move.effect);
+    const waves = kit.filter((move) => move.aoe && !move.effect);
     const heavy = heavies[Math.min(heavies.length - 1, Math.floor(rng() * heavies.length))] || kit[0];
     castBossMove(f, heavy, living(), logs, rng);
     if (living().length) {

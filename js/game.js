@@ -193,19 +193,10 @@ function isBattleScreenActive() {
   return !!battle && !screens.battle.classList.contains('hidden');
 }
 
-function canUseBattleItem() {
-  if (!isBattleScreenActive() || battleBusy || continueResolver) return false;
-  return Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
-}
-
 function updateItemButton() {
   const btn = $('btn-items');
   if (!btn) return;
-  if (isBattleScreenActive()) {
-    btn.disabled = !canUseBattleItem();
-  } else {
-    btn.disabled = false;
-  }
+  btn.disabled = false;
 }
 
 function closeItemsModal() {
@@ -224,12 +215,8 @@ function closeItemPanel() {
 function setBattleActionBusy(busy) {
   $('btn-attack').disabled = busy;
   $('btn-flee-battle').disabled = busy;
-  if (busy) {
-    closeItemPanel();
-    updateItemButton();
-  } else {
-    updateItemButton();
-  }
+  if (busy) closeItemPanel();
+  updateItemButton();
 }
 
 function resetAttackButton() {
@@ -1829,13 +1816,15 @@ function renderItemsModalList() {
   const inBattle = isBattleScreenActive();
   for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
+    if (owned <= 0) continue;
     const usable = inBattle
       ? ownedItemUsableInBattle(item)
-      : owned > 0 && state.party.some((m) => monAcceptsItem(m, item));
+      : state.party.some((m) => monAcceptsItem(m, item));
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
     row.disabled = !usable;
+    if (!usable) row.title = '现在不能使用';
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
@@ -1847,6 +1836,12 @@ function renderItemsModalList() {
       else openItemsTargetPicker(item.id);
     });
     list.appendChild(row);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = '没有道具';
+    list.appendChild(empty);
   }
 }
 
@@ -1896,12 +1891,7 @@ function onItemsUseOutOfBattle(uid) {
 }
 
 function openItemsUi() {
-  if (isBattleScreenActive()) {
-    if (!canUseBattleItem()) {
-      showAppToast('现在不能用道具');
-      return;
-    }
-  }
+  if (isBattleScreenActive() && (battleBusy || continueResolver)) return;
   $('items-title').textContent = '道具';
   $('items-step-list').classList.remove('hidden');
   $('items-step-target').classList.add('hidden');

@@ -730,6 +730,12 @@ button.danger {
   text-align: right;
 }
 
+.item-row:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
 .items-dialog {
   width: min(420px, 100%);
   display: flex;

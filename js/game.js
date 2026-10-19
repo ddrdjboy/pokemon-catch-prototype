@@ -64,13 +64,14 @@ import { gainExperience, xpReward, tryEvolve } from './level.js';
 import {
   createMazeRun,
   stepMaze,
+  findMazePath,
   removeRoamer,
   markFloorBossDefeated,
   advanceMazeFloor,
   buildRoamerEncounter,
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
-} from './maze.js';
+} from './maze.js?v=mazeclick1';
 import { partyIndividualView } from './party-detail.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
@@ -117,6 +118,12 @@ let battleBusy = false;
 let continueResolver = null;
 let itemsUiSelectedId = null;
 let mazeRun = null;
+let mazePath = [];
+let mazeDest = null;
+let mazeWalkTimer = null;
+let mazeStickDir = null;
+let mazeStickTimer = null;
+let mazeStickPointer = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -807,6 +814,7 @@ function tryEnterMap(mapId) {
 }
 
 function startMazeRun() {
+  stopMazeMotion();
   mazeRun = createMazeRun({ floor: 1 });
   currentMapId = 'spirit_hall';
   renderMaze();
@@ -814,6 +822,7 @@ function startMazeRun() {
 }
 
 function endMazeRun({ message } = {}) {
+  stopMazeMotion();
   mazeRun = null;
   playExploreBgm();
   showScreen('select');
@@ -878,7 +887,8 @@ function mazeViewSize() {
   };
 }
 
-const MAZE_HELP_TEXT = '点击角色相邻格子移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const MAZE_HELP_TEXT = '点任意可走格子，角色会自动走过去。也可以用左侧摇杆移动。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const MAZE_STEP_MS = 140;
 const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
 
 let mazeToastTimer = null;
@@ -916,10 +926,195 @@ function showAppToast(text, ms = 4000) {
 
 function onMazeTileClick(x, y) {
   if (!mazeRun) return;
-  const dx = x - mazeRun.player.x;
-  const dy = y - mazeRun.player.y;
-  if (Math.abs(dx) + Math.abs(dy) !== 1) return;
-  tryMazeStep(dx, dy);
+  const path = findMazePath(mazeRun, x, y);
+  if (!path.length) return;
+  mazeStickPointer = null;
+  stopMazeStick();
+  mazePath = path;
+  mazeDest = path[path.length - 1];
+  showMazeDest();
+  if (!mazeWalkTimer) scheduleMazeStep();
+}
+
+function clearMazePath() {
+  mazePath = [];
+  mazeDest = null;
+  if (mazeWalkTimer) {
+    clearTimeout(mazeWalkTimer);
+    mazeWalkTimer = null;
+  }
+  $('maze-world')?.querySelector('.maze-dest')?.remove();
+}
+
+function stopMazeStick() {
+  mazeStickDir = null;
+  if (mazeStickTimer) {
+    clearInterval(mazeStickTimer);
+    mazeStickTimer = null;
+  }
+  const knob = $('maze-stick-knob');
+  if (knob) knob.style.transform = '';
+  $('maze-stick')?.removeAttribute('data-dir');
+}
+
+function stopMazeMotion() {
+  clearMazePath();
+  stopMazeStick();
+}
+
+function showMazeDest() {
+  const world = $('maze-world');
+  if (!world || !mazeDest) return;
+  let el = world.querySelector('.maze-dest');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'maze-dest';
+    world.appendChild(el);
+  }
+  const tile = mazeTilePx();
+  el.style.left = `${mazeDest.x * tile}px`;
+  el.style.top = `${mazeDest.y * tile}px`;
+  el.style.width = `${tile}px`;
+  el.style.height = `${tile}px`;
+}
+
+function placeMazeCamera() {
+  const world = $('maze-world');
+  if (!world || !mazeRun) return;
+  const tile = mazeTilePx();
+  const view = mazeViewSize();
+  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
+  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
+  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
+}
+
+function syncMazePlayer() {
+  const world = $('maze-world');
+  const playerImg = world?.querySelector('.maze-entity.player');
+  if (!world || !playerImg || !mazeRun) return;
+  const tile = mazeTilePx();
+  playerImg.style.left = `${mazeRun.player.x * tile}px`;
+  playerImg.style.top = `${mazeRun.player.y * tile}px`;
+  placeMazeCamera();
+}
+
+function scheduleMazeStep() {
+  mazeWalkTimer = setTimeout(runMazeStep, MAZE_STEP_MS);
+}
+
+function runMazeStep() {
+  mazeWalkTimer = null;
+  if (!mazeRun || !mazePath.length) {
+    clearMazePath();
+    return;
+  }
+  const next = mazePath[0];
+  const dx = next.x - mazeRun.player.x;
+  const dy = next.y - mazeRun.player.y;
+  if (Math.abs(dx) + Math.abs(dy) !== 1) {
+    clearMazePath();
+    return;
+  }
+  mazePath.shift();
+  const event = tryMazeStep(dx, dy);
+  if (event || !mazeRun || !mazePath.length) {
+    clearMazePath();
+  } else {
+    scheduleMazeStep();
+  }
+}
+
+function stickVector(clientX, clientY) {
+  const el = $('maze-stick');
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const dx = clientX - (rect.left + rect.width / 2);
+  const dy = clientY - (rect.top + rect.height / 2);
+  const dead = 16;
+  if (dx * dx + dy * dy < dead * dead) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? { dir: [1, 0], name: 'e' } : { dir: [-1, 0], name: 'w' };
+  return dy > 0 ? { dir: [0, 1], name: 's' } : { dir: [0, -1], name: 'n' };
+}
+
+function placeStickKnob(clientX, clientY) {
+  const el = $('maze-stick');
+  const knob = $('maze-stick-knob');
+  if (!el || !knob) return;
+  const rect = el.getBoundingClientRect();
+  let dx = clientX - (rect.left + rect.width / 2);
+  let dy = clientY - (rect.top + rect.height / 2);
+  const max = rect.width * 0.28;
+  const len = Math.hypot(dx, dy) || 1;
+  if (len > max) {
+    dx = (dx / len) * max;
+    dy = (dy / len) * max;
+  }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
+function pauseStickSteps() {
+  mazeStickDir = null;
+  if (mazeStickTimer) {
+    clearInterval(mazeStickTimer);
+    mazeStickTimer = null;
+  }
+  $('maze-stick')?.removeAttribute('data-dir');
+}
+
+function applyMazeStick(e) {
+  if (!mazeRun) return;
+  placeStickKnob(e.clientX, e.clientY);
+  const next = stickVector(e.clientX, e.clientY);
+  if (!next) {
+    pauseStickSteps();
+    return;
+  }
+  if (!mazeStickDir) clearMazePath();
+  mazeStickDir = next.dir;
+  $('maze-stick')?.setAttribute('data-dir', next.name);
+  if (!mazeStickTimer) {
+    tryMazeStep(mazeStickDir[0], mazeStickDir[1]);
+    if (!mazeRun || !mazeStickDir) return;
+    mazeStickTimer = setInterval(() => {
+      if (!mazeStickDir || !mazeRun) return;
+      tryMazeStep(mazeStickDir[0], mazeStickDir[1]);
+    }, MAZE_STEP_MS);
+  }
+}
+
+function bindMazeStick() {
+  const stick = $('maze-stick');
+  if (!stick || stick.dataset.bound) return;
+  stick.dataset.bound = '1';
+  stick.addEventListener('pointerdown', (e) => {
+    if (!mazeRun) return;
+    mazeStickPointer = e.pointerId;
+    stick.setPointerCapture(e.pointerId);
+    applyMazeStick(e);
+    e.preventDefault();
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (mazeStickPointer !== e.pointerId) return;
+    if (!stick.hasPointerCapture(e.pointerId)) return;
+    applyMazeStick(e);
+  });
+  const end = (e) => {
+    if (stick.hasPointerCapture(e.pointerId)) stick.releasePointerCapture(e.pointerId);
+    if (mazeStickPointer !== e.pointerId) return;
+    mazeStickPointer = null;
+    stopMazeStick();
+  };
+  stick.addEventListener('pointerup', end);
+  stick.addEventListener('pointercancel', end);
+}
+
+function onMazeWorldClick(e) {
+  const cell = e.target.closest('.maze-tile');
+  if (!cell || !mazeRun) return;
+  const x = Number(cell.dataset.mazeX);
+  const y = Number(cell.dataset.mazeY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  onMazeTileClick(x, y);
 }
 
 function renderMaze() {
@@ -928,11 +1123,8 @@ function renderMaze() {
   const world = $('maze-world');
   if (!world) return;
   const tile = mazeTilePx();
-  const view = mazeViewSize();
   const h = mazeRun.grid.length;
   const w = mazeRun.grid[0].length;
-  const px = mazeRun.player.x;
-  const py = mazeRun.player.y;
   world.style.width = `${w * tile}px`;
   world.style.height = `${h * tile}px`;
   world.innerHTML = '';
@@ -941,25 +1133,15 @@ function renderMaze() {
     for (let x = 0; x < w; x += 1) {
       const kind = mazeRun.grid[y][x];
       const cell = document.createElement('div');
-      const dx = x - px;
-      const dy = y - py;
-      const adjacent = Math.abs(dx) + Math.abs(dy) === 1 && kind !== 'wall';
-      let dirClass = '';
-      if (adjacent) {
-        if (dy === -1) dirClass = ' adjacent-n';
-        else if (dy === 1) dirClass = ' adjacent-s';
-        else if (dx === -1) dirClass = ' adjacent-w';
-        else if (dx === 1) dirClass = ' adjacent-e';
-      }
-      cell.className = `maze-tile ${kind}${adjacent ? ` adjacent${dirClass}` : ''}`;
+      const walkable = kind !== 'wall';
+      cell.className = `maze-tile ${kind}${walkable ? ' walkable' : ''}`;
       cell.style.left = `${x * tile}px`;
       cell.style.top = `${y * tile}px`;
       cell.style.width = `${tile}px`;
       cell.style.height = `${tile}px`;
-      if (adjacent) {
+      if (walkable) {
         cell.dataset.mazeX = String(x);
         cell.dataset.mazeY = String(y);
-        cell.addEventListener('click', () => onMazeTileClick(x, y));
       }
       world.appendChild(cell);
     }
@@ -1006,27 +1188,28 @@ function renderMaze() {
   playerImg.style.width = `${tile * 0.82}px`;
   playerImg.style.height = `${tile * 0.82}px`;
   world.appendChild(playerImg);
-
-  // Keep the player tile centered in the viewport (camera scrolls the world).
-  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
-  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
-  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
+  placeMazeCamera();
+  if (mazeDest) showMazeDest();
 }
 
 function tryMazeStep(dx, dy) {
-  if (!mazeRun) return;
+  if (!mazeRun) return null;
+  const beforeX = mazeRun.player.x;
+  const beforeY = mazeRun.player.y;
   const { run, event } = stepMaze(mazeRun, dx, dy);
   mazeRun = run;
-  renderMaze();
-  if (!event) return;
-  if (event.type === 'roamer') {
-    beginMazeRoamerBattle(event.roamer);
-    return;
+  if (event) {
+    stopMazeMotion();
+    renderMaze();
+    if (event.type === 'roamer') beginMazeRoamerBattle(event.roamer);
+    else if (event.type === 'stairs') {
+      if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
+      else afterFloorBossCleared();
+    }
+    return event;
   }
-  if (event.type === 'stairs') {
-    if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
-    else afterFloorBossCleared();
-  }
+  if (run.player.x !== beforeX || run.player.y !== beforeY) syncMazePlayer();
+  return null;
 }
 
 function beginMazeRoamerBattle(roamer) {
@@ -2277,6 +2460,8 @@ $('btn-maze-exit').addEventListener('click', () => {
 $('btn-maze-info')?.addEventListener('click', () => {
   showMazeToast(MAZE_HELP_TEXT);
 });
+$('maze-world')?.addEventListener('click', onMazeWorldClick);
+bindMazeStick();
 $('btn-party-info')?.addEventListener('click', () => {
   showAppToast(PARTY_HELP_TEXT);
 });
@@ -2290,6 +2475,7 @@ window.addEventListener('keydown', (e) => {
   const d = dirs[e.key];
   if (!d) return;
   e.preventDefault();
+  clearMazePath();
   tryMazeStep(d[0], d[1]);
 });
 $('btn-attack').addEventListener('click', onAttack);

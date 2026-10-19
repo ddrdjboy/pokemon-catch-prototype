@@ -35,6 +35,7 @@ import {
   generateMazeFloor,
   createMazeRun,
   stepMaze,
+  findMazePath,
   removeRoamer,
   markFloorBossDefeated,
   advanceMazeFloor,
@@ -696,6 +697,24 @@ const wallStep = (() => {
   return true;
 })();
 assert(wallStep, 'cannot walk into walls');
+
+{
+  const walled = {
+    player: { x: 1, y: 1 },
+    grid: [
+      ['wall', 'wall', 'wall', 'wall', 'wall'],
+      ['wall', 'floor', 'wall', 'floor', 'wall'],
+      ['wall', 'floor', 'floor', 'floor', 'wall'],
+      ['wall', 'wall', 'wall', 'wall', 'wall'],
+    ],
+  };
+  const around = findMazePath(walled, 3, 1);
+  assert(around.length === 4, 'path goes around a wall');
+  assert(around[0].x === 1 && around[0].y === 2, 'first step leaves the wall gap');
+  assert(around[3].x === 3 && around[3].y === 1, 'path ends on the target');
+  assert(findMazePath(walled, 2, 1).length === 0, 'wall target is empty');
+  assert(findMazePath(walled, 1, 1).length === 0, 'current cell is empty');
+}
 
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].speciesId === 'eternatus' && SPIRIT_HALL_BOSS_BY_FLOOR[1].level === 225, 'floor1 boss');
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].speciesId === 'xerneas' && SPIRIT_HALL_BOSS_BY_FLOOR[2].level === 250, 'floor2 boss');

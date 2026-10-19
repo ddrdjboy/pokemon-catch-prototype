@@ -1639,47 +1639,16 @@ button.danger {
 .maze-tile.wall { background-image: url('../assets/maze/wall.png'); }
 .maze-tile.floor { background-image: url('../assets/maze/floor.png'); }
 .maze-tile.stairs { background-image: url('../assets/maze/stairs.png'); }
-.maze-tile.adjacent {
-  cursor: pointer;
-}
-.maze-tile.adjacent::after {
-  content: '';
+.maze-tile.walkable { cursor: pointer; }
+.maze-tile.walkable:hover { filter: brightness(1.08); }
+.maze-dest {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 0;
-  height: 0;
-  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid rgba(125, 255, 179, 0.9);
+  background: rgba(125, 255, 179, 0.22);
   pointer-events: none;
   z-index: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
-}
-/* Green direction arrows on the four walkable neighbor tiles */
-.maze-tile.adjacent-n::after {
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-bottom: 16px solid #7dffb3;
-}
-.maze-tile.adjacent-s::after {
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 16px solid #7dffb3;
-}
-.maze-tile.adjacent-w::after {
-  border-top: 10px solid transparent;
-  border-bottom: 10px solid transparent;
-  border-right: 16px solid #7dffb3;
-}
-.maze-tile.adjacent-e::after {
-  border-top: 10px solid transparent;
-  border-bottom: 10px solid transparent;
-  border-left: 16px solid #7dffb3;
-}
-.maze-tile.adjacent:hover::after {
-  filter: drop-shadow(0 0 4px rgba(125, 255, 179, 0.9));
-}
-.maze-tile.adjacent:hover {
-  filter: brightness(1.08);
 }
 .maze-entity {
   position: absolute;
@@ -1715,6 +1684,79 @@ button.danger {
     radial-gradient(circle at center, transparent 42%, rgba(0, 0, 0, 0.28) 100%);
   z-index: 5;
 }
+.maze-stick {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  z-index: 9;
+  width: 112px;
+  height: 112px;
+  margin-top: -56px;
+  border-radius: 50%;
+  background: rgba(18, 14, 24, 0.42);
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.35);
+  touch-action: none;
+  user-select: none;
+}
+.maze-stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  background: rgba(176, 176, 184, 0.78);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4), 0 2px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.maze-stick-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.maze-stick-arrow.n {
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 11px solid rgba(255, 255, 255, 0.8);
+}
+.maze-stick-arrow.s {
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 11px solid rgba(255, 255, 255, 0.8);
+}
+.maze-stick-arrow.w {
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-right: 11px solid rgba(255, 255, 255, 0.8);
+}
+.maze-stick-arrow.e {
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 11px solid rgba(255, 255, 255, 0.8);
+}
+.maze-stick[data-dir="n"] .maze-stick-arrow.n,
+.maze-stick[data-dir="s"] .maze-stick-arrow.s,
+.maze-stick[data-dir="w"] .maze-stick-arrow.w,
+.maze-stick[data-dir="e"] .maze-stick-arrow.e {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.95));
+}
 .maze-toast {
   position: absolute;
   left: 50%;
@@ -1741,5 +1783,10 @@ button.danger {
     --maze-tile: 44px;
     --maze-view-w: 9;
     --maze-view-h: 9;
+  }
+  .maze-stick {
+    width: 96px;
+    height: 96px;
+    margin-top: -48px;
   }
 }

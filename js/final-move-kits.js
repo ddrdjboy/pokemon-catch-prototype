@@ -207,6 +207,12 @@ export const FINAL_MOVE_KITS = {
   ],
 };
 
+export function castMoveNames(species, { squadBoss = false } = {}) {
+  if (!squadBoss) return [];
+  const moves = species?.moves?.length ? species.moves : (species?.move ? [species.move] : []);
+  return moves.filter((move) => !move.effect).map((move) => move.name);
+}
+
 export function applyFinalMoveKits(species, kits = FINAL_MOVE_KITS) {
   const next = { ...species };
   for (const [id, moves] of Object.entries(kits)) {

@@ -34,6 +34,7 @@ import {
   getDexDetail,
   canEnterSpiritHall,
 } from './data.js';
+import { castMoveNames } from './final-move-kits.js';
 import {
   ITEMS,
   emptyItems,
@@ -1325,7 +1326,7 @@ function foeIntro(enc) {
   const sp = SPECIES[enc.speciesId];
   const tags = `${enc.boss ? '（头目）' : ''}${enc.shiny ? '（闪光）' : ''}${sp.mega ? '（超级进化）' : ''}`;
   if (enc.squad) {
-    const skills = (sp.moves || [sp.move]).map((move) => move.name).join('、');
+    const skills = castMoveNames(sp, { squadBoss: true }).join('、');
     return `对手：${sp.name} Lv.${enc.level}${tags}。技能：${skills}。你和 3 只电脑宝可梦组队应战。`;
   }
   return `对手：野生的 ${sp.name} Lv.${enc.level}${tags}`;
@@ -1508,9 +1509,8 @@ function renderFighterSlot(side, index, mon) {
     `;
   }
   if (skillsId && $(skillsId)) {
-    $(skillsId).textContent = sp.moves?.length
-      ? `技能 ${sp.moves.map((move) => move.name).join(' · ')}`
-      : '';
+    const names = castMoveNames(sp, { squadBoss: pendingEncounter?.squad && side === 'foe' });
+    $(skillsId).textContent = names.length ? `技能 ${names.join(' · ')}` : '';
   }
   setHpBar(hpId, mon.hp, mon.maxHp);
   renderSprite(wrapId, mon);

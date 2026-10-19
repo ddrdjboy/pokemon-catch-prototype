@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { SPECIES, getDexDetail } from '../js/data.js';
+import { castMoveNames } from '../js/final-move-kits.js';
 
 const EXPECTED = {
   mega_beedrill: [['飞弹针', 89, 'bug'], ['地震', 74, 'ground'], ['剑舞', 0, 'normal', 'atk']],
@@ -71,3 +72,7 @@ assert.equal(detail.moves.length, 3);
 assert.equal(detail.moves[2].effect, 'atk');
 assert.equal(detail.moves[0].effect, undefined);
 assert.equal(getDexDetail('charmander').moves[0].effect, undefined);
+
+assert.deepEqual(castMoveNames(SPECIES.mega_rayquaza, { squadBoss: true }), ['飞冲升天', '龙星群']);
+assert.deepEqual(castMoveNames(SPECIES.lucario, { squadBoss: false }), []);
+assert.deepEqual(castMoveNames(SPECIES.lucario, { squadBoss: true }), ['波导弹', '恶之波动']);

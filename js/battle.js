@@ -78,8 +78,8 @@ function speciesMoves(speciesId) {
 }
 
 /**
- * Player plus computer allies all strike, then the boss casts its kit:
- * one heavy skill into a single target, then 空气斩 across the squad.
+ * Player plus computer allies all strike, then the boss casts one non-utility
+ * skill into a single target, and any remaining aoe moves across the squad.
  */
 export function resolveSquadTurn(player, allies, foe, rng = Math.random) {
   const p = { ...player };

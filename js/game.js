@@ -77,7 +77,7 @@ import {
   buildRoamerEncounter,
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
-} from './maze.js?v=mazespeed1';
+} from './maze.js';
 import { partyIndividualView } from './party-detail.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';

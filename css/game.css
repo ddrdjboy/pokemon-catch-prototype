@@ -675,19 +675,18 @@ button.danger {
   border-color: var(--danger);
 }
 
-.row-actions {
+.battle-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
+  width: 100%;
   margin-top: 12px;
-  align-items: stretch;
 }
 
 .move-buttons {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
+  width: 100%;
 }
 
 .move-buttons button.move-btn {
@@ -696,8 +695,6 @@ button.danger {
   align-items: flex-start;
   justify-content: center;
   gap: 6px;
-  flex: 1 1 140px;
-  min-height: 56px;
   padding: 10px 12px;
   text-align: left;
 }
@@ -719,6 +716,90 @@ button.danger {
 .move-btn-tags .tag.effect {
   background: #2e7d32;
   color: #e8f5e9;
+}
+
+.move-btn-slot {
+  min-height: 72px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.35);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.flee-btn {
+  min-height: 40px;
+}
+
+/* 方案1：列表 */
+.battle-actions[data-layout="list"] .move-buttons {
+  flex-direction: column;
+}
+
+.battle-actions[data-layout="list"] .move-btn {
+  width: 100%;
+  min-height: 52px;
+}
+
+.battle-actions[data-layout="list"] .flee-btn {
+  align-self: flex-end;
+  min-width: 88px;
+  background: #37474f;
+  border-color: #546e7a;
+}
+
+/* 方案2：棋盘 */
+.battle-actions[data-layout="grid"] .move-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.battle-actions[data-layout="grid"] .move-btn,
+.battle-actions[data-layout="grid"] .move-btn-slot {
+  min-height: 76px;
+  width: 100%;
+}
+
+.battle-actions[data-layout="grid"] .flee-btn {
+  width: 100%;
+  background: #37474f;
+  border-color: #546e7a;
+}
+
+/* 方案3：主招 */
+.battle-actions[data-layout="primary"] .move-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.battle-actions[data-layout="primary"] .move-btn:first-child {
+  grid-column: 1 / -1;
+  min-height: 64px;
+}
+
+.battle-actions[data-layout="primary"] .move-btn {
+  min-height: 56px;
+  width: 100%;
+}
+
+.battle-actions[data-layout="primary"] .flee-btn {
+  align-self: flex-end;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.72);
+  min-height: 32px;
+  padding: 4px 8px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.battle-actions[data-layout="primary"] .flee-btn:hover {
+  color: #fff;
+  border: none;
 }
 
 .move-prompt {

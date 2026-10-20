@@ -4,24 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=movesel3" />
+  <link rel="stylesheet" href="css/game.css?v=movelay1" />
   <script type="importmap">
   {
     "imports": {
-      "./js/game.js": "./js/game.js?v=movesel3",
-      "./js/items.js": "./js/items.js?v=movesel3",
-      "./js/audio.js": "./js/audio.js?v=movesel3",
-      "./js/data.js": "./js/data.js?v=movesel3",
-      "./js/battle.js": "./js/battle.js?v=movesel3",
-      "./js/battle-moves.js": "./js/battle-moves.js?v=movesel3",
-      "./js/battle-fx.js": "./js/battle-fx.js?v=movesel3",
-      "./js/catch.js": "./js/catch.js?v=movesel3",
-      "./js/final-move-kits.js": "./js/final-move-kits.js?v=movesel3",
-      "./js/generated-content.js": "./js/generated-content.js?v=movesel3",
-      "./js/region-content.js": "./js/region-content.js?v=movesel3",
-      "./js/maze.js": "./js/maze.js?v=movesel3",
-      "./js/party-detail.js": "./js/party-detail.js?v=movesel3",
-      "./js/level.js": "./js/level.js?v=movesel3"
+      "./js/game.js": "./js/game.js?v=movelay1",
+      "./js/items.js": "./js/items.js?v=movelay1",
+      "./js/audio.js": "./js/audio.js?v=movelay1",
+      "./js/data.js": "./js/data.js?v=movelay1",
+      "./js/battle.js": "./js/battle.js?v=movelay1",
+      "./js/battle-moves.js": "./js/battle-moves.js?v=movelay1",
+      "./js/battle-fx.js": "./js/battle-fx.js?v=movelay1",
+      "./js/catch.js": "./js/catch.js?v=movelay1",
+      "./js/final-move-kits.js": "./js/final-move-kits.js?v=movelay1",
+      "./js/generated-content.js": "./js/generated-content.js?v=movelay1",
+      "./js/region-content.js": "./js/region-content.js?v=movelay1",
+      "./js/maze.js": "./js/maze.js?v=movelay1",
+      "./js/party-detail.js": "./js/party-detail.js?v=movelay1",
+      "./js/level.js": "./js/level.js?v=movelay1"
     }
   }
   </script>
@@ -151,9 +151,9 @@
         </div>
         <div id="battle-log" class="battle-log"></div>
         <p id="move-prompt" class="move-prompt hidden"></p>
-        <div class="row-actions">
+        <div id="battle-actions" class="battle-actions" data-layout="list">
           <div id="move-buttons" class="move-buttons"></div>
-          <button id="btn-flee-battle" type="button">逃跑</button>
+          <button id="btn-flee-battle" class="flee-btn" type="button">逃跑</button>
         </div>
       </div>
     </section>
@@ -232,6 +232,10 @@
           <button id="btn-damage-numbers" type="button">开</button>
         </div>
         <div class="settings-row">
+          <span class="settings-label">技能栏布局</span>
+          <button id="btn-move-layout" type="button" title="战斗底部技能栏样式">列表</button>
+        </div>
+        <div class="settings-row">
           <span class="settings-label">捕捉方式</span>
           <div id="catch-style" class="style-toggle" role="group" aria-label="捕捉方式">
             <button type="button" data-style="flick">甩出</button>
@@ -250,6 +254,6 @@
       <button id="btn-close-settings" type="button">关闭</button>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=movesel3"></script>
+  <script type="module" src="js/game.js?v=movelay1"></script>
 </body>
 </html>

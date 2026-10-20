@@ -91,6 +91,21 @@ const MAZE_VIEW_W = 11;
 const MAZE_VIEW_H = 9;
 
 const BATTLE_ANIM_ORDER = ['off', 'light', 'medium', 'heavy'];
+const BATTLE_MOVE_LAYOUTS = ['list', 'grid', 'primary'];
+const BATTLE_MOVE_LAYOUT_LABEL = { list: '列表', grid: '棋盘', primary: '主招' };
+
+function normalizeBattleMoveLayout(value) {
+  return BATTLE_MOVE_LAYOUTS.includes(value) ? value : 'list';
+}
+
+function applyBattleMoveLayout() {
+  const layout = normalizeBattleMoveLayout(state.battleMoveLayout);
+  state.battleMoveLayout = layout;
+  const bar = $('battle-actions');
+  if (bar) bar.dataset.layout = layout;
+  const btn = $('btn-move-layout');
+  if (btn) btn.textContent = BATTLE_MOVE_LAYOUT_LABEL[layout];
+}
 const BATTLE_ANIM_LABEL = {
   off: '关闭',
   light: '轻量',
@@ -232,9 +247,19 @@ function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) 
     btn.addEventListener('click', () => onPickMove(move, dualSlot));
     root.appendChild(btn);
   }
+  if (normalizeBattleMoveLayout(state.battleMoveLayout) === 'grid') {
+    const filled = root.querySelectorAll('.move-btn').length;
+    for (let i = filled; i < 4; i += 1) {
+      const slot = document.createElement('div');
+      slot.className = 'move-btn-slot';
+      slot.textContent = '空';
+      root.appendChild(slot);
+    }
+  }
 }
 
 function refreshMoveButtons() {
+  applyBattleMoveLayout();
   if (!battle) {
     renderMoveButtons(null);
     return;
@@ -399,6 +424,7 @@ function hydrateState(parsed) {
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
+  s.battleMoveLayout = normalizeBattleMoveLayout(s.battleMoveLayout);
   s.damageNumbers = s.damageNumbers !== false;
   s.musicEnabled = s.musicEnabled !== false;
   s.sfxEnabled = s.sfxEnabled !== false;
@@ -470,6 +496,7 @@ function closeSettings() {
 function refreshSettingsPanel() {
   refreshBattleAnimButton();
   renderCatchStyle();
+  applyBattleMoveLayout();
   const musicBtn = $('btn-music');
   const sfxBtn = $('btn-sfx');
   const numBtn = $('btn-damage-numbers');
@@ -2713,6 +2740,15 @@ $('btn-damage-numbers').addEventListener('click', () => {
   save();
   refreshSettingsPanel();
 });
+$('btn-move-layout')?.addEventListener('click', () => {
+  const cur = normalizeBattleMoveLayout(state.battleMoveLayout);
+  const idx = BATTLE_MOVE_LAYOUTS.indexOf(cur);
+  state.battleMoveLayout = BATTLE_MOVE_LAYOUTS[(idx + 1) % BATTLE_MOVE_LAYOUTS.length];
+  save();
+  applyBattleMoveLayout();
+  if (battle) refreshMoveButtons();
+  refreshSettingsPanel();
+});
 $('btn-music').addEventListener('click', () => {
   state.musicEnabled = !(state.musicEnabled !== false);
   applyAudioSettings();
@@ -2748,6 +2784,7 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 applyAudioSettings();
+applyBattleMoveLayout();
 save();
 showScreen('select');
 renderSelect();

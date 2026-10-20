@@ -957,6 +957,7 @@ export function initialPlayerState() {
     hasShinyCharm: false,
     catchStyle: 'flick',
     battleAnim: 'light',
+    battleMoveLayout: 'list',
     damageNumbers: true,
     musicEnabled: true,
     sfxEnabled: true,

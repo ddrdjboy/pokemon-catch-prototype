@@ -1585,7 +1585,7 @@ button.danger {
     min-height: 72px;
     max-height: 120px;
     font-size: 0.85rem;
-    margin: 8px 0;
+    margin: 8px 0 0;
   }
 
   .battle-panel .row-actions {

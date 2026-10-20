@@ -61,7 +61,8 @@ export function chooseFoeMove(attacker, defender, rng = Math.random) {
     if (covMult > 1 && !(priMult > 1)) return coverage;
   }
 
-  if (!attacker.usedUtility && (buffAtk || buffDef) && rng() < 0.25) {
+  // Use the high quartile so tests that pass rng => 0 (crit / first index) do not always buff.
+  if (!attacker.usedUtility && (buffAtk || buffDef) && rng() >= 0.75) {
     if (buffAtk && buffDef) {
       const base = sp.base;
       return base.atk >= base.def ? buffAtk : buffDef;

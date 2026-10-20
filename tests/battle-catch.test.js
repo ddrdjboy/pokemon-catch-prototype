@@ -383,7 +383,14 @@ function raidToEnd(level) {
       fighter = createPokemon('mega_charizard', level);
       backups -= 1;
     }
-    const turn = resolveSquadTurn(fighter, allies, raidBoss, () => (roll++ % 4) / 4);
+    const turn = resolveSquadTurn(
+      fighter,
+      allies,
+      raidBoss,
+      () => (roll++ % 4) / 4,
+      SPECIES.mega_charizard.move,
+      SPECIES.mega_rayquaza.moves[0],
+    );
     fighter = turn.player;
     allies = turn.allies;
     raidBoss = turn.foe;

@@ -6,6 +6,7 @@ import {
   chooseFoeMove,
 } from '../js/battle-moves.js';
 import { SPECIES, createPokemon, typeMultiplier } from '../js/data.js';
+import { calcDamage, resolveTurn, resolveDualTurn, resolveSquadTurn } from '../js/battle.js';
 
 const mon = withBattleState(createPokemon('mega_charizard', 30));
 assert.equal(mon.usedUtility, false);
@@ -59,5 +60,50 @@ assert.equal(speciesMoveList(SPECIES.charmander)[0].name, chooseFoeMove(
   withBattleState(createPokemon('squirtle', 10)),
   () => 0,
 ).name);
+
+import { calcDamage, resolveTurn, resolveDualTurn, resolveSquadTurn } from '../js/battle.js';
+
+const atk = withBattleState(createPokemon('mega_charizard', 40));
+const def = withBattleState(createPokemon('mega_blastoise', 40));
+const move = SPECIES.mega_charizard.moves[0];
+const base = calcDamage(atk, def, move, () => 1);
+const buffed = calcDamage({ ...atk, atkMul: 1.5 }, def, move, () => 1);
+assert.ok(buffed.damage > base.damage);
+
+const p = withBattleState({ ...createPokemon('mega_venusaur', 40), hp: 20 });
+const f = withBattleState(createPokemon('scorbunny', 5));
+const healMove = SPECIES.mega_venusaur.moves[2];
+const turn = resolveTurn(p, f, () => 1, healMove, SPECIES.scorbunny.move);
+assert.equal(turn.player.usedUtility, true);
+assert.ok(turn.player.hp > 20);
+assert.ok(turn.logs.some((l) => l.text.includes('光合作用')));
+
+const p0 = withBattleState(createPokemon('lucario', 50));
+const p1 = withBattleState(createPokemon('garchomp', 50));
+const f0 = withBattleState(createPokemon('scorbunny', 10));
+const f1 = withBattleState(createPokemon('charmander', 10));
+const dual = resolveDualTurn(
+  [p0, p1],
+  [f0, f1],
+  () => 1,
+  [SPECIES.lucario.moves[0], SPECIES.garchomp.moves[0]],
+  [SPECIES.scorbunny.move, SPECIES.charmander.move],
+);
+assert.ok(dual.logs.some((l) => l.text.includes('波导弹')));
+assert.ok(dual.logs.some((l) => l.text.includes('龙爪')));
+
+const lead = withBattleState(createPokemon('mega_charizard', 100));
+const allies = [withBattleState(createPokemon('scorbunny', 20))];
+const boss = withBattleState(createPokemon('mega_rayquaza', 50));
+const squad = resolveSquadTurn(
+  lead,
+  allies,
+  boss,
+  () => 1,
+  SPECIES.mega_charizard.moves[0],
+  SPECIES.mega_rayquaza.moves[0],
+);
+assert.ok(squad.logs.some((l) => l.side === 'player' && l.text.includes('爆炸烈焰')));
+assert.ok(squad.logs.some((l) => l.side === 'foe' && l.text.includes('飞冲升天')));
 
 console.log('battle-moves helpers ok');

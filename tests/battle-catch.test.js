@@ -401,11 +401,11 @@ function raidToEnd(level) {
   }
   return { raidResult, rounds, bossHp: raidBoss.hp };
 }
-const fresh = raidToEnd(100);
-assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 100 squad falls before the boss');
-assert(fresh.bossHp < 1600, 'level 100 squad still cuts deep into the boss');
-const ready = raidToEnd(140);
-assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 140 squad beats rayquaza (${ready.rounds} rounds)`);
+const fresh = raidToEnd(90);
+assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 90 squad falls before the boss');
+assert(fresh.bossHp < 1600, 'level 90 squad still cuts deep into the boss');
+const ready = raidToEnd(100);
+assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 100 squad beats rayquaza (${ready.rounds} rounds)`);
 
 console.log('twin towers');
 assert(MAPS.twin_towers?.twin && MAPS.twin_towers.encounters.length === 4, 'twin towers has 4 dual fights');

@@ -36,6 +36,11 @@ import {
 } from './data.js';
 import { castMoveNames } from './final-move-kits.js';
 import {
+  withBattleState,
+  speciesMoveList,
+  chooseFoeMove,
+} from './battle-moves.js';
+import {
   ITEMS,
   emptyItems,
   applyItem,
@@ -133,10 +138,100 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+let dualMovePicks = [null, null];
+let dualMoveSlot = 0;
+
 function attackLabel() {
   if (battle?.allies) return '小队攻击';
   if (battle?.dual) return '双打攻击';
   return '攻击';
+}
+
+function ensureBattleStateOnField() {
+  if (!battle) return;
+  if (battle.dual) {
+    battle.players = battle.players.map((mon) => withBattleState(mon));
+    battle.foes = battle.foes.map((mon) => withBattleState(mon));
+    battle.player = battle.players[0];
+    battle.foe = battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+  } else {
+    battle.player = withBattleState(battle.player);
+    battle.foe = withBattleState(battle.foe);
+    if (battle.allies) battle.allies = battle.allies.map((ally) => withBattleState(ally));
+  }
+}
+
+function setMoveButtonsBusy(busy) {
+  const root = $('move-buttons');
+  if (!root) return;
+  for (const btn of root.querySelectorAll('button')) {
+    btn.disabled = busy || btn.dataset.locked === '1';
+  }
+}
+
+function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) {
+  const root = $('move-buttons');
+  const prompt = $('move-prompt');
+  if (!root) return;
+  root.innerHTML = '';
+  if (continueMode) {
+    if (prompt) {
+      prompt.textContent = '点击继续';
+      prompt.classList.remove('hidden');
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'primary';
+    btn.textContent = '继续';
+    btn.addEventListener('click', () => {
+      if (continueResolver) continueResolver();
+    });
+    root.appendChild(btn);
+    return;
+  }
+  if (!mon) {
+    if (prompt) prompt.classList.add('hidden');
+    return;
+  }
+  if (battle?.dual && dualSlot != null && prompt) {
+    prompt.textContent = `请为 ${SPECIES[mon.speciesId].name} 选择技能`;
+    prompt.classList.remove('hidden');
+  } else if (prompt) {
+    prompt.classList.add('hidden');
+  }
+  for (const move of speciesMoveList(SPECIES[mon.speciesId])) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'primary';
+    if (move.effect) {
+      const label = { heal: '回复', atk: '加攻', def: '加防' }[move.effect];
+      btn.textContent = `${move.name} · ${label}`;
+      if (mon.usedUtility) {
+        btn.disabled = true;
+        btn.dataset.locked = '1';
+      }
+    } else {
+      btn.textContent = `${move.name} · ${typeLabel(move.type)} · 威力 ${move.power}`;
+    }
+    btn.addEventListener('click', () => onPickMove(move, dualSlot));
+    root.appendChild(btn);
+  }
+}
+
+function refreshMoveButtons() {
+  if (!battle) {
+    renderMoveButtons(null);
+    return;
+  }
+  ensureBattleStateOnField();
+  if (battle.dual) {
+    const slot = battle.players.findIndex((p) => p.hp > 0);
+    dualMoveSlot = slot < 0 ? 0 : slot;
+    dualMovePicks = [null, null];
+    renderMoveButtons(battle.players[dualMoveSlot], { dualSlot: dualMoveSlot });
+    return;
+  }
+  renderMoveButtons(battle.player);
 }
 
 function onFieldMons() {
@@ -221,33 +316,28 @@ function closeItemPanel() {
 }
 
 function setBattleActionBusy(busy) {
-  $('btn-attack').disabled = busy;
+  setMoveButtonsBusy(busy);
   $('btn-flee-battle').disabled = busy;
   if (busy) closeItemPanel();
   updateItemButton();
 }
 
 function resetAttackButton() {
-  const btn = $('btn-attack');
-  btn.textContent = attackLabel();
-  btn.disabled = false;
   $('btn-flee-battle').disabled = false;
   battleBusy = false;
   continueResolver = null;
+  refreshMoveButtons();
   updateItemButton();
 }
 
 function waitForContinue(message) {
   appendLog(message);
   return new Promise((resolve) => {
-    const btn = $('btn-attack');
-    btn.textContent = '继续';
-    btn.disabled = false;
     closeItemPanel();
+    renderMoveButtons(null, { continueMode: true });
     continueResolver = () => {
-      btn.disabled = true;
-      btn.textContent = attackLabel();
       continueResolver = null;
+      refreshMoveButtons();
       resolve();
     };
     updateItemButton();
@@ -1801,14 +1891,14 @@ function finishDualTurnOutcome(turn) {
       return;
     }
     appendLog('同归于尽…你败北了。');
-    $('btn-attack').disabled = true;
+    setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
     setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
     return;
   }
   if (turn.result === 'lose') {
     appendLog('你没有可以继续对战的宝可梦了…');
-    $('btn-attack').disabled = true;
+    setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
     setTimeout(() => leaveBattle(), 900);
     return;
@@ -1880,30 +1970,70 @@ function finishTurnOutcome(turn) {
   setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
 }
 
-async function onAttack() {
+async function runDualTurnWithPicks(picks) {
+  battleBusy = true;
+  setBattleActionBusy(true);
+  try {
+    const startPlayers = battle.players.map((mon) => ({ ...mon }));
+    const startFoes = battle.foes.map((mon) => ({ ...mon }));
+    const foeMoves = startFoes.map((foe, index) => {
+      if (foe.hp <= 0) return null;
+      const target = startPlayers.find((p) => p.hp > 0 && startPlayers.indexOf(p) === index)
+        || startPlayers.find((p) => p.hp > 0);
+      return chooseFoeMove(foe, target || startPlayers[0]);
+    });
+    const turn = resolveDualTurn(startPlayers, startFoes, Math.random, picks, foeMoves);
+    await playDualTurnHits(turn);
+    finishTurnOutcome(turn);
+  } catch (err) {
+    console.error(err);
+    resetAttackButton();
+  }
+}
+
+async function onPickMove(move, dualSlot) {
   if (continueResolver) {
     continueResolver();
     return;
   }
   if (!battle || battleBusy) return;
-  battleBusy = true;
-  setBattleActionBusy(true);
 
-  try {
-    if (battle.dual) {
-      const startPlayers = battle.players.map((mon) => ({ ...mon }));
-      const startFoes = battle.foes.map((mon) => ({ ...mon }));
-      const turn = resolveDualTurn(startPlayers, startFoes);
-      await playDualTurnHits(turn);
-      finishTurnOutcome(turn);
+  if (battle.dual) {
+    ensureBattleStateOnField();
+    let slot = dualSlot;
+    if (slot == null) {
+      slot = dualMovePicks[0] == null
+        ? battle.players.findIndex((p) => p.hp > 0)
+        : battle.players.findIndex((p, i) => p.hp > 0 && i > 0 && dualMovePicks[0] != null && dualMovePicks[i] == null);
+      if (slot < 0) slot = battle.players.findIndex((p) => p.hp > 0);
+    }
+    const actor = battle.players[slot];
+    if (!actor || actor.hp <= 0) return;
+    if (move.effect && actor.usedUtility) return;
+    dualMovePicks[slot] = move;
+    const next = battle.players.findIndex((p, i) => p.hp > 0 && dualMovePicks[i] == null);
+    if (next >= 0) {
+      dualMoveSlot = next;
+      renderMoveButtons(battle.players[next], { dualSlot: next });
       return;
     }
+    const picks = dualMovePicks.slice();
+    dualMovePicks = [null, null];
+    await runDualTurnWithPicks(picks);
+    return;
+  }
+
+  if (move.effect && battle.player.usedUtility) return;
+  battleBusy = true;
+  setBattleActionBusy(true);
+  try {
     const startPlayer = { ...battle.player };
     const startFoe = { ...battle.foe };
+    const foeMove = chooseFoeMove(startFoe, startPlayer);
     const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
     const turn = startAllies
-      ? resolveSquadTurn(startPlayer, startAllies, startFoe)
-      : resolveTurn(startPlayer, startFoe);
+      ? resolveSquadTurn(startPlayer, startAllies, startFoe, Math.random, move, chooseFoeMove(startFoe, startPlayer))
+      : resolveTurn(startPlayer, startFoe, Math.random, move, foeMove);
     await playTurnHits(turn, startPlayer, startFoe);
     finishTurnOutcome(turn);
   } catch (err) {
@@ -2483,7 +2613,6 @@ window.addEventListener('keydown', (e) => {
   clearMazePath();
   tryMazeStep(d[0], d[1]);
 });
-$('btn-attack').addEventListener('click', onAttack);
 $('btn-items')?.addEventListener('click', openItemsUi);
 $('btn-close-items')?.addEventListener('click', closeItemsModal);
 $('items-modal')?.addEventListener('click', (e) => {

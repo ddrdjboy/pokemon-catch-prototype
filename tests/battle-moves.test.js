@@ -43,25 +43,26 @@ assert.equal(again, null);
 
 const grassFoe = withBattleState(createPokemon('mega_venusaur', 30));
 const fireAtk = withBattleState(createPokemon('mega_charizard', 30));
-const pickCoverage = chooseFoeMove(fireAtk, grassFoe, () => 0.99);
+const pickCoverage = chooseFoeMove(fireAtk, grassFoe, () => 0.5);
 assert.equal(pickCoverage.name, '爆炸烈焰');
 
 const waterFoe = withBattleState(createPokemon('mega_blastoise', 30));
 assert.equal(typeMultiplier('grass', 'water'), 1.5);
 assert.equal(typeMultiplier('fire', 'water'), 0.5);
-const pickGrass = chooseFoeMove(fireAtk, waterFoe, () => 0.99);
+const pickGrass = chooseFoeMove(fireAtk, waterFoe, () => 0.5);
 assert.equal(pickGrass.name, '日光束');
 
 const low = withBattleState({ ...createPokemon('mega_venusaur', 30), hp: 1 });
-assert.equal(chooseFoeMove(low, fireAtk, () => 0.99).effect, 'heal');
+assert.equal(chooseFoeMove(low, fireAtk, () => 0.5).effect, 'heal');
+
+const buffPick = chooseFoeMove(fireAtk, grassFoe, () => 0.8);
+assert.equal(buffPick.effect, 'atk');
 
 assert.equal(speciesMoveList(SPECIES.charmander)[0].name, chooseFoeMove(
   withBattleState(createPokemon('charmander', 10)),
   withBattleState(createPokemon('squirtle', 10)),
   () => 0,
 ).name);
-
-import { calcDamage, resolveTurn, resolveDualTurn, resolveSquadTurn } from '../js/battle.js';
 
 const atk = withBattleState(createPokemon('mega_charizard', 40));
 const def = withBattleState(createPokemon('mega_blastoise', 40));

@@ -680,6 +680,26 @@ button.danger {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+  align-items: stretch;
+}
+
+.move-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+}
+
+.move-buttons button {
+  flex: 1 1 120px;
+  min-height: 44px;
+}
+
+.move-prompt {
+  width: 100%;
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.85;
 }
 
 .item-panel {

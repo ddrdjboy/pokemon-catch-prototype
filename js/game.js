@@ -247,15 +247,6 @@ function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) 
     btn.addEventListener('click', () => onPickMove(move, dualSlot));
     root.appendChild(btn);
   }
-  if (normalizeBattleMoveLayout(state.battleMoveLayout) === 'grid') {
-    const filled = root.querySelectorAll('.move-btn').length;
-    for (let i = filled; i < 4; i += 1) {
-      const slot = document.createElement('div');
-      slot.className = 'move-btn-slot';
-      slot.textContent = '空';
-      root.appendChild(slot);
-    }
-  }
 }
 
 function refreshMoveButtons() {

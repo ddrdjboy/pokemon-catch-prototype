@@ -718,17 +718,6 @@ button.danger {
   color: #e8f5e9;
 }
 
-.move-btn-slot {
-  min-height: 72px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.18);
-  color: rgba(255, 255, 255, 0.35);
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-
 .flee-btn {
   min-height: 40px;
 }
@@ -750,21 +739,24 @@ button.danger {
   border-color: #546e7a;
 }
 
-/* 方案2：棋盘 */
-.battle-actions[data-layout="grid"] .move-buttons {
+/* 方案2：棋盘（技能 + 逃跑同一网格、同尺寸） */
+.battle-actions[data-layout="grid"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
+.battle-actions[data-layout="grid"] .move-buttons {
+  display: contents;
+}
+
 .battle-actions[data-layout="grid"] .move-btn,
-.battle-actions[data-layout="grid"] .move-btn-slot {
+.battle-actions[data-layout="grid"] .flee-btn {
   min-height: 76px;
   width: 100%;
 }
 
 .battle-actions[data-layout="grid"] .flee-btn {
-  width: 100%;
   background: #37474f;
   border-color: #546e7a;
 }

@@ -690,9 +690,35 @@ button.danger {
   flex: 1;
 }
 
-.move-buttons button {
-  flex: 1 1 120px;
-  min-height: 44px;
+.move-buttons button.move-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 140px;
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.move-btn-name {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.move-btn-tags {
+  margin-top: 0;
+}
+
+.move-btn-tags .tag.power {
+  background: #37474f;
+  color: #eceff1;
+}
+
+.move-btn-tags .tag.effect {
+  background: #2e7d32;
+  color: #e8f5e9;
 }
 
 .move-prompt {

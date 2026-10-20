@@ -202,17 +202,33 @@ function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) 
   for (const move of speciesMoveList(SPECIES[mon.speciesId])) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'primary';
+    btn.className = 'primary move-btn';
+    const name = document.createElement('span');
+    name.className = 'move-btn-name';
+    name.textContent = move.name;
+    const tags = document.createElement('span');
+    tags.className = 'move-btn-tags tags';
     if (move.effect) {
-      const label = { heal: '回复', atk: '加攻', def: '加防' }[move.effect];
-      btn.textContent = `${move.name} · ${label}`;
+      const effectTag = document.createElement('span');
+      effectTag.className = 'tag effect';
+      effectTag.textContent = { heal: '回复', atk: '加攻', def: '加防' }[move.effect];
+      tags.appendChild(effectTag);
       if (mon.usedUtility) {
         btn.disabled = true;
         btn.dataset.locked = '1';
       }
     } else {
-      btn.textContent = `${move.name} · ${typeLabel(move.type)} · 威力 ${move.power}`;
+      const typeTag = document.createElement('span');
+      typeTag.className = 'tag type';
+      typeTag.textContent = typeLabel(move.type);
+      const powerTag = document.createElement('span');
+      powerTag.className = 'tag power';
+      powerTag.textContent = `威力 ${move.power}`;
+      tags.appendChild(typeTag);
+      tags.appendChild(powerTag);
     }
+    btn.appendChild(name);
+    btn.appendChild(tags);
     btn.addEventListener('click', () => onPickMove(move, dualSlot));
     root.appendChild(btn);
   }

@@ -1046,23 +1046,9 @@ button.danger {
   align-items: flex-end;
   justify-content: center;
   position: relative;
-  padding-bottom: 18px;
-  background:
-    radial-gradient(ellipse 70% 28% at 50% 88%, rgba(0, 0, 0, 0.35), transparent 70%),
-    linear-gradient(180deg, rgba(135, 200, 255, 0.15), transparent 55%);
+  padding-bottom: 8px;
+  background: linear-gradient(180deg, rgba(135, 200, 255, 0.15), transparent 55%);
   border-radius: 12px;
-}
-
-.sprite-wrap::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  width: 88px;
-  height: 16px;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.35), transparent 70%);
-  pointer-events: none;
 }
 
 .sprite-wrap img {
@@ -1071,7 +1057,6 @@ button.danger {
   object-fit: contain;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.3));
   position: relative;
   z-index: 1;
   animation: idle-bob 2.4s ease-in-out infinite;
@@ -1087,7 +1072,7 @@ button.danger {
 }
 
 .sprite-wrap.shiny img {
-  filter: hue-rotate(160deg) saturate(1.45) drop-shadow(0 4px 0 rgba(0, 0, 0, 0.3));
+  filter: hue-rotate(160deg) saturate(1.45);
 }
 
 /* Battle FX POC */
@@ -1300,7 +1285,7 @@ button.danger {
   max-height: 180px;
   overflow-y: auto;
   font-size: 0.9rem;
-  margin: 12px 0;
+  margin: 12px 0 0;
   border: 1px solid var(--border);
 }
 

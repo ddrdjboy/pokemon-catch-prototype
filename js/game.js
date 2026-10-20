@@ -190,10 +190,7 @@ function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) 
   if (!root) return;
   root.innerHTML = '';
   if (continueMode) {
-    if (prompt) {
-      prompt.textContent = '点击继续';
-      prompt.classList.remove('hidden');
-    }
+    if (prompt) prompt.classList.add('hidden');
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'primary';

@@ -1748,6 +1748,25 @@ async function playDualTurnHits(turn) {
     const line = turn.logs[i];
     appendLog(line.text);
     const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
+    if (line.effect) {
+      if (line.side === 'player' && line.actorIndex != null) {
+        battle.players[line.actorIndex] = { ...turn.players[line.actorIndex] };
+        renderFighterSlot('player', line.actorIndex, battle.players[line.actorIndex]);
+        if (line.effect === 'heal') {
+          showHealNumber(attackerEl, Math.floor(battle.players[line.actorIndex].maxHp * 0.5));
+        }
+      } else if (line.side === 'foe' && line.actorIndex != null) {
+        battle.foes[line.actorIndex] = { ...turn.foes[line.actorIndex] };
+        renderFighterSlot('foe', line.actorIndex, battle.foes[line.actorIndex]);
+        if (line.effect === 'heal') {
+          showHealNumber(attackerEl, Math.floor(battle.foes[line.actorIndex].maxHp * 0.5));
+        }
+      }
+      syncBattleHp();
+      await wait(HP_ANIM_MS);
+      if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+      continue;
+    }
     const stripPlayed = await playFighterFrameStrip(attackerEl, {
       speciesId: attackerSpeciesId,
       mode: state.battleAnim,
@@ -1804,6 +1823,23 @@ async function playTurnHits(turn, startPlayer, startFoe) {
     appendLog(line.text);
     const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
     playAttackSfx(line.moveType || 'normal');
+    if (line.effect) {
+      if (line.side === 'player') {
+        playerHp = turn.player.hp;
+        battle.player = { ...battle.player, ...turn.player, hp: playerHp };
+        setHpBar('player-hp', playerHp, battle.player.maxHp);
+        if (line.effect === 'heal') showHealNumber(attackerEl, Math.floor(battle.player.maxHp * 0.5));
+      } else if (line.side === 'foe') {
+        foeHp = turn.foe.hp;
+        battle.foe = { ...battle.foe, ...turn.foe, hp: foeHp };
+        setHpBar('foe-hp', foeHp, battle.foe.maxHp);
+        if (line.effect === 'heal') showHealNumber(attackerEl, Math.floor(battle.foe.maxHp * 0.5));
+      }
+      syncBattleHp();
+      await wait(HP_ANIM_MS);
+      if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+      continue;
+    }
     await playHit({
       side: line.side,
       attackerSpeciesId,

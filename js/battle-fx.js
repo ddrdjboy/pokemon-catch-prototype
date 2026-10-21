@@ -35,6 +35,8 @@ const FIGHTER_FRAME_MS = 90;
 const FIGHTER_ASSET_VER = 'fighter2';
 
 const fighterCache = new Map(); // speciesId -> HTMLImageElement[] | null
+/** @type {Map<string, Promise<HTMLImageElement[] | null>>} */
+const fighterPending = new Map();
 
 export function normalizeBattleAnim(value) {
   if (MODES.has(value)) return value;
@@ -117,6 +119,7 @@ export function hasFighterFrames(speciesId) {
 export async function loadFighterFrames(speciesId, { loader } = {}) {
   if (!speciesId) return null;
   if (fighterCache.has(speciesId)) return fighterCache.get(speciesId);
+  if (fighterPending.has(speciesId)) return fighterPending.get(speciesId);
 
   const loadOne = loader || ((url) => new Promise((resolve, reject) => {
     const img = new Image();
@@ -125,21 +128,32 @@ export async function loadFighterFrames(speciesId, { loader } = {}) {
     img.src = `${url}?v=${FIGHTER_ASSET_VER}`;
   }));
 
-  try {
-    const imgs = [];
-    for (const url of fighterFrameUrls(speciesId)) {
-      imgs.push(await loadOne(url));
+  const pending = (async () => {
+    try {
+      const imgs = await Promise.all(fighterFrameUrls(speciesId).map((url) => loadOne(url)));
+      fighterCache.set(speciesId, imgs);
+      return imgs;
+    } catch {
+      fighterCache.set(speciesId, null);
+      return null;
+    } finally {
+      fighterPending.delete(speciesId);
     }
-    fighterCache.set(speciesId, imgs);
-    return imgs;
-  } catch {
-    fighterCache.set(speciesId, null);
-    return null;
-  }
+  })();
+
+  fighterPending.set(speciesId, pending);
+  return pending;
+}
+
+/** Warm the fighter-frame cache for every unique species id (parallel per species). */
+export function preloadFighterFrames(speciesIds, opts) {
+  const ids = [...new Set((speciesIds || []).filter(Boolean))];
+  return Promise.all(ids.map((id) => loadFighterFrames(id, opts)));
 }
 
 export function clearFighterFrameCache() {
   fighterCache.clear();
+  fighterPending.clear();
 }
 
 function mainSpriteImg(wrapEl) {

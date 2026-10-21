@@ -55,7 +55,14 @@ import {
   resolveTurn,
   resolveFoeOnlyTurn,
 } from './battle.js';
-import { hasFighterFrames, normalizeBattleAnim, playDamageNumber, playFighterFrameStrip, playHit } from './battle-fx.js';
+import {
+  hasFighterFrames,
+  normalizeBattleAnim,
+  playDamageNumber,
+  playFighterFrameStrip,
+  playHit,
+  preloadFighterFrames,
+} from './battle-fx.js';
 import {
   unlockAudio,
   playExploreBgm,
@@ -1545,6 +1552,7 @@ function startDualBattle(playerMons) {
   });
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function startBattle(playerMon, { freshLog = true } = {}) {
@@ -1570,6 +1578,7 @@ function startBattle(playerMon, { freshLog = true } = {}) {
   } else appendLog(`上吧，${SPECIES[player.speciesId].name}！`);
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function fillDualSlot(playerMon) {
@@ -1588,6 +1597,7 @@ function fillDualSlot(playerMon) {
   renderBattle();
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function renderSprite(wrapId, mon) {
@@ -1725,6 +1735,26 @@ function refreshBattleAnimButton() {
   const mode = normalizeBattleAnim(state.battleAnim);
   state.battleAnim = mode;
   btn.textContent = `动画 · ${BATTLE_ANIM_LABEL[mode]}`;
+}
+
+function battleSpeciesIds() {
+  if (!battle) return [];
+  const ids = [];
+  if (battle.dual) {
+    for (const mon of battle.players || []) ids.push(mon?.speciesId);
+    for (const mon of battle.foes || []) ids.push(mon?.speciesId);
+  } else {
+    if (battle.player) ids.push(battle.player.speciesId);
+    if (battle.foe) ids.push(battle.foe.speciesId);
+    for (const mon of battle.allies || []) ids.push(mon?.speciesId);
+  }
+  return ids;
+}
+
+/** Fire-and-forget: warm heavy-mode fight frames while the battle screen is up. */
+function preloadBattleFighterFrames() {
+  if (normalizeBattleAnim(state.battleAnim) !== 'heavy') return;
+  void preloadFighterFrames(battleSpeciesIds());
 }
 
 function slotWrap(side, index) {
@@ -2331,6 +2361,7 @@ function sendNextFoe() {
   battle.foe = { ...sent };
   appendLog(`${pendingEncounter.trainerName} 派出了 ${SPECIES[sent.speciesId].name}！`);
   renderBattle();
+  preloadBattleFighterFrames();
   if (battle?.player) {
     playBattleBgm({
       rift: !!battle.allies,
@@ -2726,6 +2757,7 @@ $('btn-battle-anim').addEventListener('click', () => {
   state.battleAnim = BATTLE_ANIM_ORDER[(idx + 1) % BATTLE_ANIM_ORDER.length];
   save();
   refreshBattleAnimButton();
+  if (isBattleScreenActive()) preloadBattleFighterFrames();
 });
 $('btn-damage-numbers').addEventListener('click', () => {
   state.damageNumbers = !(state.damageNumbers !== false);

@@ -1,4 +1,5 @@
 import { SPECIES, BALLS, BOSS_CATCH_MULT } from './data.js';
+import { bossAuraEllipse } from './boss-ui.js';
 
 const GRACE = 12;
 const BALL_R = 14;
@@ -296,13 +297,14 @@ export function createCatchController(canvas, {
       ctx.drawImage(spriteImg, target.x - size / 2, target.y - size / 2, size, size);
       ctx.restore();
       if (targetPokemon.boss && scale > 0.6) {
-        const ey = target.y + (sp.eyeOffset?.y ?? -10) * scale;
-        const ex = target.x + (sp.eyeOffset?.x ?? 0) * scale;
-        ctx.fillStyle = '#ff1a1a';
+        const aura = bossAuraEllipse({ x: target.x, y: target.y, size });
+        ctx.save();
+        ctx.strokeStyle = aura.color;
+        ctx.lineWidth = aura.lineWidth;
         ctx.beginPath();
-        ctx.arc(ex - 10 * scale, ey, 5 * scale, 0, Math.PI * 2);
-        ctx.arc(ex + 10 * scale, ey, 5 * scale, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.ellipse(aura.cx, aura.cy, aura.rx, aura.ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
     } else {
       ctx.fillStyle = '#444';

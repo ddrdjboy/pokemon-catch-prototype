@@ -7,6 +7,7 @@ import {
   resolveMoveTargets,
   chooseDualFoeCmd,
 } from '../js/battle-moves.js';
+import { calcDamage, resolveDualTurn, resolveDualItemTurn } from '../js/battle.js';
 import { SPECIES, createPokemon } from '../js/data.js';
 
 const mon = withBattleState(createPokemon('zacian', 50));
@@ -57,4 +58,59 @@ assert.ok(cmd.move?.name);
 assert.equal(typeof cmd.targetIndex, 'number');
 
 assert.equal(speciesMoveList(SPECIES.zacian).length >= 1, true);
+
+const buffAtk = withBattleState({ ...createPokemon('zacian', 40), atkMul: 1.5 });
+const plain = withBattleState(createPokemon('zacian', 40));
+const dummy = withBattleState(createPokemon('charmander', 40));
+const mv = { name: '圣剑', power: 110, type: 'fairy' };
+assert.ok(calcDamage(buffAtk, dummy, mv).damage > calcDamage(plain, dummy, mv).damage);
+
+const a = withBattleState(createPokemon('lucario', 80));
+const b = withBattleState(createPokemon('garchomp', 80));
+const e0 = withBattleState(createPokemon('charmander', 5));
+const e1 = withBattleState(createPokemon('squirtle', 5));
+const slash = SPECIES.lucario?.move || { name: '波导弹', power: 81, type: 'fighting' };
+const claw = SPECIES.garchomp?.move || { name: '龙爪', power: 81, type: 'dragon' };
+const dual = resolveDualTurn(
+  [a, b],
+  [e0, e1],
+  () => 0,
+  [
+    { type: 'move', move: slash, targetSide: 'foe', targetIndex: 1 },
+    { type: 'switch' },
+  ],
+  [
+    { type: 'move', move: SPECIES.charmander.move, targetSide: 'player', targetIndex: 0 },
+    { type: 'move', move: SPECIES.squirtle.move, targetSide: 'player', targetIndex: 0 },
+  ],
+);
+assert.ok(dual.logs.some((l) => l.side === 'player' && l.actorIndex === 0));
+assert.ok(!dual.logs.some((l) => l.side === 'player' && l.actorIndex === 1 && l.damage > 0), 'switch slot does not attack');
+
+const focus = resolveDualTurn(
+  [withBattleState(createPokemon('zacian', 100)), withBattleState(createPokemon('zamazenta', 100))],
+  [
+    withBattleState({ ...createPokemon('charmander', 5), hp: 1 }),
+    withBattleState(createPokemon('squirtle', 50)),
+  ],
+  () => 0,
+  [
+    { type: 'move', move: { name: '圣剑', power: 110, type: 'fairy' }, targetSide: 'foe', targetIndex: 0 },
+    { type: 'move', move: { name: '横扫', power: 40, type: 'flying', target: 'foes' }, targetSide: 'foe', targetIndex: 0 },
+  ],
+  [null, null],
+);
+assert.ok(focus.logs.filter((l) => l.side === 'player' && l.actorIndex === 1).length >= 1);
+
+const itemTurn = resolveDualItemTurn(
+  [withBattleState(createPokemon('zacian', 50)), withBattleState(createPokemon('zamazenta', 50))],
+  [withBattleState(createPokemon('charmander', 20)), withBattleState(createPokemon('squirtle', 20))],
+  () => 0,
+  [
+    { type: 'move', move: SPECIES.charmander.move, targetSide: 'player', targetIndex: 0 },
+    { type: 'move', move: SPECIES.squirtle.move, targetSide: 'player', targetIndex: 1 },
+  ],
+);
+assert.ok(itemTurn.logs.every((l) => l.side === 'foe'));
+
 console.log('battle-moves helpers ok');

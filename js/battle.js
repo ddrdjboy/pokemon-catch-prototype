@@ -1,11 +1,23 @@
 import { SPECIES, typeMultiplier } from './data.js';
+import {
+  withBattleState,
+  applyMoveEffect,
+  resolveMoveTargets,
+  moveTarget,
+  chooseDualFoeCmd,
+  speciesMoveList,
+} from './battle-moves.js';
 
 /**
  * Damage: max(1, floor(atk * power / def * typeMult))
  */
 export function calcDamage(attacker, defender, move) {
   const mult = typeMultiplier(move.type, SPECIES[defender.speciesId].type);
-  const raw = Math.floor((attacker.atk * move.power) / Math.max(1, defender.def) * mult);
+  const atkMul = attacker.atkMul ?? 1;
+  const defMul = defender.defMul ?? 1;
+  const raw = Math.floor(
+    (attacker.atk * atkMul * move.power) / Math.max(1, defender.def * defMul) * mult,
+  );
   return { damage: Math.max(1, raw), typeMult: mult };
 }
 
@@ -224,23 +236,33 @@ function typeHint(mult) {
   return '';
 }
 
-/**
- * True 2v2: living players and foes act in speed order each turn.
- * Prefer same-slot targets; fall back to the first living opponent.
- */
-export function resolveDualTurn(players, foes, rng = Math.random) {
-  const team = players.map((mon) => ({ ...mon }));
-  const enemy = foes.map((mon) => ({ ...mon }));
-  const logs = [];
+function defaultDualCmds(sideMons, side, opponents, rng) {
+  return sideMons.map((mon, index) => {
+    if (!mon || mon.hp <= 0) return null;
+    if (side === 'foe') return chooseDualFoeCmd(withBattleState(mon), index, opponents, rng);
+    const move = speciesMoveList(SPECIES[mon.speciesId])[0];
+    return { type: 'move', move, targetSide: 'foe', targetIndex: index };
+  });
+}
 
-  const livingPlayers = () => team
-    .map((mon, index) => ({ side: 'player', index, mon }))
-    .filter((u) => u.mon.hp > 0);
-  const livingFoes = () => enemy
-    .map((mon, index) => ({ side: 'foe', index, mon }))
-    .filter((u) => u.mon.hp > 0);
+/**
+ * True 2v2: living players and foes act in speed order from move/switch commands.
+ */
+export function resolveDualTurn(players, foes, rng = Math.random, playerCmds, foeCmds) {
+  const team = players.map((mon) => withBattleState({ ...mon }));
+  const enemy = foes.map((mon) => withBattleState({ ...mon }));
+  const logs = [];
+  const pCmds = playerCmds || defaultDualCmds(team, 'player', enemy, rng);
+  const fCmds = foeCmds || defaultDualCmds(enemy, 'foe', team, rng);
+
+  const livingPlayers = () => team.map((mon, index) => ({ side: 'player', index, mon })).filter((u) => u.mon.hp > 0);
+  const livingFoes = () => enemy.map((mon, index) => ({ side: 'foe', index, mon })).filter((u) => u.mon.hp > 0);
 
   const actors = [...livingPlayers(), ...livingFoes()]
+    .filter((a) => {
+      const cmd = a.side === 'player' ? pCmds[a.index] : fCmds[a.index];
+      return cmd && cmd.type === 'move';
+    })
     .sort((a, b) => {
       if (b.mon.spd !== a.mon.spd) return b.mon.spd - a.mon.spd;
       if (a.side !== b.side) return a.side === 'player' ? -1 : 1;
@@ -248,24 +270,44 @@ export function resolveDualTurn(players, foes, rng = Math.random) {
     });
 
   for (const actor of actors) {
+    const sideArr = actor.side === 'player' ? team : enemy;
+    actor.mon = sideArr[actor.index];
     if (actor.mon.hp <= 0) continue;
-    const targets = actor.side === 'player' ? livingFoes() : livingPlayers();
-    if (!targets.length) break;
-    const preferred = targets.find((t) => t.index === actor.index) || targets[0];
-    const move = SPECIES[actor.mon.speciesId].move;
-    const { damage, typeMult } = calcDamage(actor.mon, preferred.mon, move);
-    preferred.mon.hp = Math.max(0, preferred.mon.hp - damage);
+    const cmd = actor.side === 'player' ? pCmds[actor.index] : fCmds[actor.index];
+    if (!cmd || cmd.type !== 'move') continue;
+
+    if (cmd.move.effect) {
+      const applied = applyMoveEffect(actor.mon, cmd.move);
+      if (!applied) continue;
+      sideArr[actor.index] = applied.mon;
+      logs.push({
+        ...applied.log,
+        side: actor.side,
+        actorIndex: actor.index,
+        targetIndex: actor.index,
+      });
+      continue;
+    }
+
+    const targets = resolveMoveTargets(actor, cmd, team, enemy);
+    if (!targets.length) continue;
     const atkName = SPECIES[actor.mon.speciesId].name;
-    const defName = SPECIES[preferred.mon.speciesId].name;
-    logs.push({
-      text: `${atkName} 使用了 ${move.name}！打向${defName}，造成 ${damage} 点伤害${typeHint(typeMult)}`,
-      damage,
-      typeMult,
-      moveType: move.type,
-      side: actor.side,
-      actorIndex: actor.index,
-      targetIndex: preferred.index,
-    });
+    const wave = moveTarget(cmd.move) === 'foes' || moveTarget(cmd.move) === 'allies';
+    for (const t of targets) {
+      const defArr = t.side === 'player' ? team : enemy;
+      const { damage, typeMult } = calcDamage(actor.mon, t.mon, cmd.move);
+      defArr[t.index].hp = Math.max(0, defArr[t.index].hp - damage);
+      const defName = SPECIES[t.mon.speciesId].name;
+      logs.push({
+        text: `${atkName} 使用了 ${cmd.move.name}！${wave ? '横扫' : '打向'}${defName}，造成 ${damage} 点伤害${typeHint(typeMult)}`,
+        damage,
+        typeMult,
+        moveType: cmd.move.type,
+        side: actor.side,
+        actorIndex: actor.index,
+        targetIndex: t.index,
+      });
+    }
   }
 
   const playersUp = livingPlayers().length;
@@ -282,54 +324,11 @@ export function resolveDualTurn(players, foes, rng = Math.random) {
 /**
  * Dual item turn: players skip attacking; living foes still strike.
  */
-export function resolveDualItemTurn(players, foes, rng = Math.random) {
-  const team = players.map((mon) => ({ ...mon }));
-  const enemy = foes.map((mon) => ({ ...mon }));
-  const logs = [];
-
-  const livingPlayers = () => team
-    .map((mon, index) => ({ side: 'player', index, mon }))
-    .filter((u) => u.mon.hp > 0);
-  const livingFoes = () => enemy
-    .map((mon, index) => ({ side: 'foe', index, mon }))
-    .filter((u) => u.mon.hp > 0);
-
-  const actors = livingFoes()
-    .sort((a, b) => {
-      if (b.mon.spd !== a.mon.spd) return b.mon.spd - a.mon.spd;
-      return a.index - b.index;
-    });
-
-  for (const actor of actors) {
-    if (actor.mon.hp <= 0) continue;
-    const targets = livingPlayers();
-    if (!targets.length) break;
-    const preferred = targets.find((t) => t.index === actor.index) || targets[0];
-    const move = SPECIES[actor.mon.speciesId].move;
-    const { damage, typeMult } = calcDamage(actor.mon, preferred.mon, move);
-    preferred.mon.hp = Math.max(0, preferred.mon.hp - damage);
-    const atkName = SPECIES[actor.mon.speciesId].name;
-    const defName = SPECIES[preferred.mon.speciesId].name;
-    logs.push({
-      text: `${atkName} 使用了 ${move.name}！打向${defName}，造成 ${damage} 点伤害${typeHint(typeMult)}`,
-      damage,
-      typeMult,
-      moveType: move.type,
-      side: 'foe',
-      actorIndex: actor.index,
-      targetIndex: preferred.index,
-    });
-  }
-
-  const playersUp = livingPlayers().length;
-  const foesUp = livingFoes().length;
-  let result = 'ongoing';
-  if (foesUp <= 0 && playersUp <= 0) result = 'draw';
-  else if (foesUp <= 0) result = 'win';
-  else if (playersUp <= 0) result = 'lose';
-  else if (team.some((mon) => mon.hp <= 0)) result = 'switch';
-
-  return { players: team, foes: enemy, logs, result };
+export function resolveDualItemTurn(players, foes, rng = Math.random, foeCmds) {
+  const team = players.map((mon) => withBattleState({ ...mon }));
+  const enemy = foes.map((mon) => withBattleState({ ...mon }));
+  const fCmds = foeCmds || defaultDualCmds(enemy, 'foe', team, rng);
+  return resolveDualTurn(team, enemy, rng, team.map(() => ({ type: 'switch' })), fCmds);
 }
 
 /** Deterministic first-striker for tests (speed only; ties prefer player). */

@@ -287,7 +287,6 @@ export function createCatchController(canvas, {
   }
 
   function drawPokemon(target) {
-    const sp = SPECIES[targetPokemon.speciesId];
     const scale = spriteScale;
     if (scale < 0.04) return;
     const size = 112 * scale;

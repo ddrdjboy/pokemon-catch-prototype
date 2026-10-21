@@ -43,6 +43,12 @@ import {
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
 } from '../js/maze.js';
+import {
+  spriteWrapClassName,
+  partyCardClassName,
+  markerClassName,
+  bossAuraEllipse,
+} from '../js/boss-ui.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
 
 let passed = 0;
@@ -868,6 +874,42 @@ console.log('\nparty individual view');
   assert(view.fainted === true && view.shiny === false, 'fainted not shiny');
 }
 assert(partyIndividualView(null) === null, 'null mon');
+
+console.log('boss ui helpers');
+assert(spriteWrapClassName({}) === 'sprite-wrap', 'plain sprite wrap');
+assert(spriteWrapClassName({ shiny: true }) === 'sprite-wrap shiny', 'shiny wrap');
+assert(spriteWrapClassName({ boss: true }) === 'sprite-wrap boss', 'boss wrap');
+assert(
+  spriteWrapClassName({ shiny: true, boss: true }) === 'sprite-wrap shiny boss',
+  'shiny boss wrap',
+);
+
+assert(partyCardClassName({}) === 'party-card', 'plain party card');
+assert(
+  partyCardClassName({ selectable: true, shiny: true, boss: true })
+    === 'party-card selectable shiny boss',
+  'selectable shiny boss card',
+);
+assert(
+  partyCardClassName({ selectable: true, selected: true, boss: true })
+    === 'party-card selectable selected boss',
+  'selected boss card',
+);
+
+assert(
+  markerClassName({ kind: 'wild', boss: true }) === 'marker wild boss',
+  'boss marker',
+);
+assert(
+  markerClassName({ kind: 'trainer', shiny: true, boss: true, cleared: true })
+    === 'marker trainer shiny boss cleared',
+  'shiny boss cleared trainer marker',
+);
+
+const aura = bossAuraEllipse({ x: 100, y: 80, size: 112 });
+assert(aura.cx === 100 && aura.cy === 80, 'aura center');
+assert(aura.rx === 112 * 0.55 && aura.ry === 112 * 0.48, 'aura radii');
+assert(aura.color === '#ff6b6b' && aura.lineWidth === 2, 'aura stroke style');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

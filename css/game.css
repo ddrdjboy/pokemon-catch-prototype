@@ -413,6 +413,18 @@ body {
   box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(79, 195, 247, 0.35);
 }
 
+.party-card.boss {
+  box-shadow: 0 0 0 2px #ff6b6b;
+}
+
+.party-card.boss.in-battle {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px #ff6b6b,
+    0 0 0 4px var(--accent),
+    0 0 10px rgba(79, 195, 247, 0.35);
+}
+
 /* Popover overlays its own card: parents scroll/clip (overflow), so "above the card" would be cut off. */
 .party-popover {
   position: absolute;
@@ -1001,6 +1013,13 @@ button.danger {
   box-shadow: 0 0 0 2px rgba(90, 180, 255, 0.35);
 }
 
+.party-card.boss.selected {
+  outline: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 2px #ff6b6b,
+    0 0 0 4px rgba(90, 180, 255, 0.35);
+}
+
 .ally-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1091,6 +1110,16 @@ button.danger {
 
 .sprite-wrap.shiny img {
   filter: hue-rotate(160deg) saturate(1.45);
+}
+
+.sprite-wrap.boss {
+  outline: 2px solid #ff6b6b;
+  outline-offset: 1px;
+}
+
+.marker.boss {
+  outline: 2px solid #ff6b6b;
+  outline-offset: 1px;
 }
 
 /* Battle FX POC */
@@ -1274,25 +1303,6 @@ button.danger {
   .fx-num {
     animation: fx-num-still 420ms ease-out forwards;
   }
-}
-
-.boss-eyes {
-  position: absolute;
-  top: 42%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  gap: 18px;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.boss-eyes span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ff1a1a;
-  box-shadow: 0 0 6px #ff0000;
 }
 
 .battle-log {

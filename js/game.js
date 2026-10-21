@@ -231,7 +231,7 @@ function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) 
       }
     } else {
       const typeTag = document.createElement('span');
-      typeTag.className = 'tag type';
+      typeTag.className = typeTagClass(move.type);
       typeTag.textContent = typeLabel(move.type);
       const powerTag = document.createElement('span');
       powerTag.className = 'tag power';
@@ -665,7 +665,7 @@ function renderDex() {
     row.innerHTML = `
       <img src="${spriteUrl(e.sprite)}" alt="${e.name}" />
       <span class="name">${e.name}</span>
-      <span class="tag type">${typeLabel(e.type)}</span>
+      <span class="${typeTagClass(e.type)}">${typeLabel(e.type)}</span>
     `;
     row.addEventListener('click', () => openDexDetail(e.id));
     list.appendChild(row);
@@ -707,7 +707,7 @@ function renderDexDetail(detail, mon = null) {
     ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
     ${individualHtml}
     <div class="meta">
-      <span class="tag type">${typeLabel(detail.type)}</span>
+      <span class="${typeTagClass(detail.type)}">${typeLabel(detail.type)}</span>
       ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
     </div>
     <div class="stats">种族值：HP ${detail.base.hp} · 攻 ${detail.base.atk} · 防 ${detail.base.def} · 速 ${detail.base.spd}</div>
@@ -891,6 +891,10 @@ function typeLabel(t) {
     ice: '冰', ground: '地面', flying: '飞行', fighting: '格斗', normal: '一般',
     steel: '钢', dark: '恶', fairy: '妖精',
   }[t] || t;
+}
+
+function typeTagClass(t) {
+  return `tag type type-${t || 'normal'}`;
 }
 
 function setMapNote(text) {

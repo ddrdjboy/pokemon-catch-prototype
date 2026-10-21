@@ -647,7 +647,25 @@ body {
 .tag.boss { background: #5c1a1a; color: #ff8a80; }
 .tag.shiny { background: #4a148c; color: #e1bee7; }
 .tag.mega { background: #5d4037; color: #ffe082; }
-.tag.type { background: #1b4f72; }
+.tag.type { background: #A8A878; color: #1a1a1a; }
+.tag.type.type-normal { background: #A8A878; color: #1a1a1a; }
+.tag.type.type-fire { background: #F08030; color: #fff; }
+.tag.type.type-water { background: #6890F0; color: #fff; }
+.tag.type.type-electric { background: #F8D030; color: #1a1a1a; }
+.tag.type.type-grass { background: #78C850; color: #1a1a1a; }
+.tag.type.type-ice { background: #98D8D8; color: #1a1a1a; }
+.tag.type.type-fighting { background: #C03028; color: #fff; }
+.tag.type.type-poison { background: #A040A0; color: #fff; }
+.tag.type.type-ground { background: #E0C068; color: #1a1a1a; }
+.tag.type.type-flying { background: #A890F0; color: #fff; }
+.tag.type.type-psychic { background: #F85888; color: #fff; }
+.tag.type.type-bug { background: #A8B820; color: #1a1a1a; }
+.tag.type.type-rock { background: #B8A038; color: #fff; }
+.tag.type.type-ghost { background: #705898; color: #fff; }
+.tag.type.type-dragon { background: #7038F8; color: #fff; }
+.tag.type.type-dark { background: #705848; color: #fff; }
+.tag.type.type-steel { background: #B8B8D0; color: #1a1a1a; }
+.tag.type.type-fairy { background: #EE99AC; color: #1a1a1a; }
 
 button {
   border: 1px solid var(--border);

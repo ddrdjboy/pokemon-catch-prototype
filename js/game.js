@@ -86,6 +86,7 @@ import {
   SPIRIT_HALL_BOSS_BY_FLOOR,
 } from './maze.js';
 import { partyIndividualView } from './party-detail.js';
+import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from './maze-minimap.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
@@ -1126,6 +1127,15 @@ function placeMazeCamera() {
   world.style.transform = `translate(${-camX}px, ${-camY}px)`;
 }
 
+function refreshMazeMinimap() {
+  const canvas = $('maze-minimap');
+  if (!canvas || !mazeRun) return;
+  const cssW = parseFloat(getComputedStyle(canvas).width) || MAZE_MINIMAP_SIZE;
+  const size = Math.round(cssW) || MAZE_MINIMAP_SIZE;
+  const ctx = canvas.getContext('2d');
+  paintMazeMinimap(ctx, mazeRun, size);
+}
+
 function syncMazePlayer() {
   const world = $('maze-world');
   const playerImg = world?.querySelector('.maze-entity.player');
@@ -1134,6 +1144,7 @@ function syncMazePlayer() {
   playerImg.style.left = `${mazeRun.player.x * tile}px`;
   playerImg.style.top = `${mazeRun.player.y * tile}px`;
   placeMazeCamera();
+  refreshMazeMinimap();
 }
 
 function scheduleMazeStep() {
@@ -1327,6 +1338,7 @@ function renderMaze() {
   playerImg.style.height = `${tile * 0.82}px`;
   world.appendChild(playerImg);
   placeMazeCamera();
+  refreshMazeMinimap();
   if (mazeDest) showMazeDest();
 }
 

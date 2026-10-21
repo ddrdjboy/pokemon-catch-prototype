@@ -43,6 +43,7 @@ import {
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
 } from '../js/maze.js';
+import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
 
 let passed = 0;
 let failed = 0;
@@ -804,6 +805,34 @@ console.log('spirit hall flow helpers');
   assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].level === SPIRIT_HALL_BOSS_LEVELS[3], 'floor3 level sync');
 
   assert(MAPS.spirit_hall.encounters.length === 0, 'spirit hall has no marker encounters');
+}
+
+console.log('spirit hall minimap');
+{
+  const ops = [];
+  const ctx = {
+    canvas: { width: 0, height: 0 },
+    fillStyle: '',
+    clearRect(...a) { ops.push(['clear', ...a]); },
+    fillRect(...a) { ops.push(['fill', this.fillStyle, ...a]); },
+  };
+  const run = {
+    grid: [
+      ['wall', 'wall', 'wall'],
+      ['wall', 'floor', 'stairs'],
+      ['wall', 'wall', 'wall'],
+    ],
+    player: { x: 1, y: 1 },
+    stairs: { x: 2, y: 1 },
+  };
+  paintMazeMinimap(ctx, run, 90);
+  assert(ctx.canvas.width === 90 && ctx.canvas.height === 90, 'sets canvas size');
+  assert(ops.some((o) => o[0] === 'clear'), 'clears canvas');
+  assert(ops.some((o) => o[0] === 'fill' && o[1] === '#ffd54f'), 'paints stairs gold');
+  assert(ops.some((o) => o[0] === 'fill' && o[1] === '#4fc3f7'), 'paints player cyan');
+  assert(ops.filter((o) => o[0] === 'fill' && o[1] === '#2a3340').length >= 7, 'paints walls');
+  assert(paintMazeMinimap(ctx, null) === false, 'null run is no-op');
+  assert(MAZE_MINIMAP_SIZE === 104, 'default size constant');
 }
 
 console.log('\nparty individual view');

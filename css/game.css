@@ -801,6 +801,13 @@ button.danger {
   box-shadow: 0 0 0 2px rgba(90, 180, 255, 0.35);
 }
 
+.party-card.boss.selected {
+  outline: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 2px #ff6b6b,
+    0 0 0 4px rgba(90, 180, 255, 0.35);
+}
+
 .ally-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

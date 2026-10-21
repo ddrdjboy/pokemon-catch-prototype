@@ -123,4 +123,24 @@ assert.equal(moveTarget(SPECIES.lugia.moves[1]), 'foes');
 assert.equal(moveTarget(SPECIES.miraidon.moves[1]), 'foes');
 assert.equal(SPECIES.zacian.move.name, SPECIES.zacian.moves[0].name);
 
+const healer = withBattleState({ ...createPokemon('lugia', 50), hp: 10 });
+const partner = withBattleState(createPokemon('zamazenta', 50));
+const weak = withBattleState(createPokemon('charmander', 5));
+const weak2 = withBattleState(createPokemon('squirtle', 5));
+const healTurn = resolveDualTurn(
+  [healer, partner],
+  [weak, weak2],
+  () => 0,
+  [
+    { type: 'move', move: { name: '自我再生', power: 0, type: 'normal', effect: 'heal' }, targetSide: 'player', targetIndex: 0 },
+    { type: 'switch' },
+  ],
+  [null, null],
+);
+const healLog = healTurn.logs.find((l) => l.effect === 'heal');
+assert.ok(healLog);
+assert.equal(healLog.playersHp.length, 2);
+assert.equal(healLog.foesHp.length, 2);
+assert.ok(healLog.playersHp[0] > 10);
+
 console.log('battle-moves helpers ok');

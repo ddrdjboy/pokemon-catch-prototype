@@ -1341,7 +1341,17 @@ async function playDualTurnHits(turn) {
   for (let i = 0; i < turn.logs.length; i += 1) {
     const line = turn.logs[i];
     appendLog(line.text);
-    const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
+    const actorIndex = line.actorIndex || 0;
+    const effectFx = line.effect
+      ? {
+          attackerEl: slotWrap(line.side, actorIndex),
+          defenderEl: slotWrap(line.side, actorIndex),
+          attackerSpeciesId: line.side === 'player'
+            ? battle.players[actorIndex]?.speciesId
+            : battle.foes[actorIndex]?.speciesId,
+        }
+      : null;
+    const { attackerEl, defenderEl, attackerSpeciesId } = effectFx || battleHitElements(line);
     const stripPlayed = await playFighterFrameStrip(attackerEl, {
       speciesId: attackerSpeciesId,
       mode: state.battleAnim,
@@ -1353,17 +1363,32 @@ async function playDualTurnHits(turn) {
         mode: state.battleAnim,
       });
     }
-    if (line.side === 'player') {
-      const foe = battle.foes[line.targetIndex];
-      if (foe) {
-        foe.hp = Math.max(0, foe.hp - line.damage);
-        renderFighterSlot('foe', line.targetIndex, foe);
-      }
-    } else {
-      const player = battle.players[line.targetIndex];
-      if (player) {
-        player.hp = Math.max(0, player.hp - line.damage);
-        renderFighterSlot('player', line.targetIndex, player);
+    if (line.playersHp && line.foesHp) {
+      line.playersHp.forEach((hp, idx) => {
+        const mon = battle.players[idx];
+        if (!mon) return;
+        mon.hp = hp;
+        renderFighterSlot('player', idx, mon);
+      });
+      line.foesHp.forEach((hp, idx) => {
+        const mon = battle.foes[idx];
+        if (!mon) return;
+        mon.hp = hp;
+        renderFighterSlot('foe', idx, mon);
+      });
+    } else if (!line.effect) {
+      if (line.side === 'player') {
+        const foe = battle.foes[line.targetIndex];
+        if (foe) {
+          foe.hp = Math.max(0, foe.hp - line.damage);
+          renderFighterSlot('foe', line.targetIndex, foe);
+        }
+      } else {
+        const player = battle.players[line.targetIndex];
+        if (player) {
+          player.hp = Math.max(0, player.hp - line.damage);
+          renderFighterSlot('player', line.targetIndex, player);
+        }
       }
     }
     syncBattleHp();

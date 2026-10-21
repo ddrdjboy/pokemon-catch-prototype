@@ -285,6 +285,8 @@ export function resolveDualTurn(players, foes, rng = Math.random, playerCmds, fo
         side: actor.side,
         actorIndex: actor.index,
         targetIndex: actor.index,
+        playersHp: team.map((m) => m.hp),
+        foesHp: enemy.map((m) => m.hp),
       });
       continue;
     }
@@ -306,6 +308,8 @@ export function resolveDualTurn(players, foes, rng = Math.random, playerCmds, fo
         side: actor.side,
         actorIndex: actor.index,
         targetIndex: t.index,
+        playersHp: team.map((m) => m.hp),
+        foesHp: enemy.map((m) => m.hp),
       });
     }
   }

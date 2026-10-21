@@ -71,6 +71,11 @@ import {
   buildFloorBossEncounter,
   SPIRIT_HALL_BOSS_BY_FLOOR,
 } from './maze.js';
+import {
+  spriteWrapClassName,
+  partyCardClassName,
+  markerClassName,
+} from './boss-ui.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
@@ -688,7 +693,11 @@ function renderParty(container, selectable, onPick, mons = null, { onlyConscious
     const sp = SPECIES[mon.speciesId];
     const card = document.createElement(selectable ? 'button' : 'div');
     if (selectable) card.type = 'button';
-    card.className = `party-card${selectable ? ' selectable' : ''}${mon.shiny ? ' shiny' : ''}`;
+    card.className = partyCardClassName({
+      selectable: !!selectable,
+      shiny: !!mon.shiny,
+      boss: !!mon.boss,
+    });
     const index = state.party.findIndex((p) => p.uid === mon.uid);
     const inBattle = index >= 0 && index < ACTIVE_CAP;
     if (inBattle && !selectable) card.classList.add('in-battle');
@@ -1022,7 +1031,12 @@ function openMap(mapId) {
     const boss = trainer ? enc.team.some((m) => m.boss) : enc.boss;
     const el = document.createElement('button');
     el.type = 'button';
-    el.className = `marker ${enc.kind}${shiny ? ' shiny' : ''}${cleared ? ' cleared' : ''}`;
+    el.className = markerClassName({
+      kind: enc.kind,
+      shiny: !!shiny,
+      boss: !!boss,
+      cleared: !!cleared,
+    });
     el.style.left = `${enc.x}%`;
     el.style.top = `${enc.y}%`;
     const who = enc.dual
@@ -1123,7 +1137,12 @@ function renderDualLeadPick() {
     const card = document.createElement('button');
     card.type = 'button';
     const selected = dualPickUids.includes(mon.uid);
-    card.className = `party-card selectable${selected ? ' selected' : ''}${mon.shiny ? ' shiny' : ''}`;
+    card.className = partyCardClassName({
+      selectable: true,
+      selected: !!selected,
+      shiny: !!mon.shiny,
+      boss: !!mon.boss,
+    });
     const order = dualPickUids.indexOf(mon.uid);
     card.innerHTML = `
       <div class="sprite-frame"><img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" /></div>
@@ -1232,11 +1251,8 @@ function renderSprite(wrapId, mon) {
   const wrap = $(wrapId);
   const sp = SPECIES[mon.speciesId];
   const floats = [...wrap.querySelectorAll('.fx-num')];
-  wrap.className = `sprite-wrap${mon.shiny ? ' shiny' : ''}`;
+  wrap.className = spriteWrapClassName({ shiny: !!mon.shiny, boss: !!mon.boss });
   wrap.innerHTML = `<img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" />`;
-  if (mon.boss) {
-    wrap.innerHTML += '<div class="boss-eyes"><span></span><span></span></div>';
-  }
   for (const num of floats) wrap.appendChild(num);
 }
 

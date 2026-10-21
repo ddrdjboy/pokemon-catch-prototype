@@ -344,6 +344,59 @@ function onDualPickMove(move) {
   enterDualTarget(move);
 }
 
+function onDualSwitchCmd() {
+  if (dualCmdPhase !== 'action' || !battle?.dual) return;
+  const onField = new Set(battle.playerUids);
+  const party = activeParty(state.party).filter((p) => p.hp > 0 && !onField.has(p.uid));
+  if (!party.length) {
+    appendLog('没有可以换上的宝可梦。');
+    return;
+  }
+  dualCmdPhase = 'switch';
+  setDualCmdChrome({
+    hint: '选择补位宝可梦',
+    showMoves: false,
+    showSwitch: false,
+    showBack: true,
+    showUndo: false,
+    hideAttack: true,
+  });
+  pickMode = 'dual-voluntary';
+  switchSlotIndex = dualCmdSlot;
+  $('pick-title').textContent = '选择换上场的宝可梦';
+  $('btn-cancel-pick').classList.remove('hidden');
+  $('btn-cancel-pick').textContent = '返回';
+  const living = battle.foes.filter((f) => f.hp > 0).map((f) => SPECIES[f.speciesId].name).join(' & ');
+  $('pick-foe-info').textContent = living ? `对手仍在：${living}` : '';
+  renderParty($('pick-party'), true, (mon) => commitDualVoluntarySwitch(mon), party, { onlyConscious: true });
+  showScreen('pick');
+}
+
+function commitDualVoluntarySwitch(mon) {
+  const slot = dualCmdSlot;
+  const oldUid = battle.playerUids[slot];
+  const old = state.party.find((p) => p.uid === oldUid);
+  if (old) {
+    old.hp = battle.players[slot].hp;
+  }
+  battle.players[slot] = withBattleState({
+    ...mon,
+    usedUtility: false,
+    atkMul: 1,
+    defMul: 1,
+  });
+  battle.playerUids[slot] = mon.uid;
+  battle.player = battle.players[0];
+  battle.playerUid = battle.playerUids[0];
+  dualCmds[slot] = { type: 'switch' };
+  appendLog(`${SPECIES[mon.speciesId].name}，交换上场！（本回合不攻击）`);
+  showScreen('battle');
+  renderBattle();
+  const next = nextDualCmdSlot(0);
+  if (next < 0) void resolveDualCommands();
+  else enterDualAction(next);
+}
+
 async function resolveDualCommands() {
   dualCmdPhase = null;
   setDualCmdChrome({ hint: '', showMoves: false, showSwitch: false, showBack: false, showUndo: false, hideAttack: true });
@@ -1959,12 +2012,18 @@ $('btn-back-select').addEventListener('click', () => {
   renderSelect();
 });
 $('btn-cancel-pick').addEventListener('click', () => {
+  if (pickMode === 'dual-voluntary') {
+    showScreen('battle');
+    enterDualAction(dualCmdSlot);
+    return;
+  }
   if (pickMode === 'catch') skipCatch();
   else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
 });
 $('btn-attack').addEventListener('click', onAttack);
+$('btn-switch-cmd').addEventListener('click', onDualSwitchCmd);
 $('btn-cmd-back')?.addEventListener('click', () => {
-  if (dualCmdPhase === 'target') enterDualAction(dualCmdSlot);
+  if (dualCmdPhase === 'target' || dualCmdPhase === 'switch') enterDualAction(dualCmdSlot);
 });
 $('btn-cmd-undo')?.addEventListener('click', () => {
   if (dualCmdPhase !== 'action') return;

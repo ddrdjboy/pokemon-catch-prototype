@@ -113,4 +113,14 @@ const itemTurn = resolveDualItemTurn(
 );
 assert.ok(itemTurn.logs.every((l) => l.side === 'foe'));
 
+for (const id of ['zacian', 'zamazenta', 'lugia', 'ho_oh', 'latias', 'latios', 'koraidon', 'miraidon']) {
+  const kit = speciesMoveList(SPECIES[id]);
+  assert.equal(kit.length, 3, `${id} has 3 moves`);
+  assert.equal(moveTarget(kit[0]), 'foe');
+  assert.equal(moveTarget(kit[2]), 'self');
+}
+assert.equal(moveTarget(SPECIES.lugia.moves[1]), 'foes');
+assert.equal(moveTarget(SPECIES.miraidon.moves[1]), 'foes');
+assert.equal(SPECIES.zacian.move.name, SPECIES.zacian.moves[0].name);
+
 console.log('battle-moves helpers ok');

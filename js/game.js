@@ -94,6 +94,7 @@ let continueResolver = null;
 let dualCmdPhase = null; // null | 'action' | 'target' | 'switch'
 let dualCmdSlot = 0;
 let dualCmds = []; // length 2
+let dualSwitchBackup = [null, null];
 let pendingMove = null;
 
 const HP_ANIM_MS = 550;
@@ -262,6 +263,7 @@ function renderDualMoveButtons(mon) {
 
 function beginDualCommandPhase() {
   dualCmds = [null, null];
+  dualSwitchBackup = [null, null];
   dualCmdSlot = nextDualCmdSlot(0);
   pendingMove = null;
   clearTargetHighlight();
@@ -379,6 +381,10 @@ function commitDualVoluntarySwitch(mon) {
   if (old) {
     old.hp = battle.players[slot].hp;
   }
+  dualSwitchBackup[slot] = {
+    mon: { ...battle.players[slot] },
+    uid: battle.playerUids[slot],
+  };
   battle.players[slot] = withBattleState({
     ...mon,
     usedUtility: false,
@@ -2029,6 +2035,18 @@ $('btn-cmd-undo')?.addEventListener('click', () => {
   if (dualCmdPhase !== 'action') return;
   for (let i = dualCmdSlot - 1; i >= 0; i -= 1) {
     if (dualCmds[i]) {
+      if (dualCmds[i]?.type === 'switch' && dualSwitchBackup[i]) {
+        const bak = dualSwitchBackup[i];
+        const curUid = battle.playerUids[i];
+        const curParty = state.party.find((p) => p.uid === curUid);
+        if (curParty) curParty.hp = battle.players[i].hp;
+        battle.players[i] = bak.mon;
+        battle.playerUids[i] = bak.uid;
+        battle.player = battle.players[0];
+        battle.playerUid = battle.playerUids[0];
+        dualSwitchBackup[i] = null;
+        renderBattle();
+      }
       dualCmds[i] = null;
       enterDualAction(i);
       return;

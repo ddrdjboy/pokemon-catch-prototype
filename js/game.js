@@ -362,7 +362,7 @@ async function resolveDualCommands() {
     finishTurnOutcome(turn);
   } catch (err) {
     console.error(err);
-    beginDualCommandPhase();
+    resetAttackButton();
   }
 }
 

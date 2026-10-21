@@ -1572,7 +1572,7 @@ async function onUseItem(itemId) {
   fighter.hp = fieldMon.hp;
   const amount = applyHealItem(fighter, itemId);
   if (battle.dual) {
-    battle.players[slot] = { ...fighter };
+    battle.players[slot] = { ...battle.players[slot], hp: fighter.hp };
     battle.player = battle.players[0];
   } else {
     battle.player = { ...fighter };

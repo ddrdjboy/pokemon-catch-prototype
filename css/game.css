@@ -752,6 +752,39 @@ button.danger {
   display: none;
 }
 
+.battle-cmd-hint {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+.move-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+}
+.move-buttons button {
+  text-align: left;
+}
+.fighter.targetable {
+  outline: 2px solid #f5d76e;
+  cursor: pointer;
+}
+.fighter.target-dim {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.fighter.cmd-ready::after {
+  content: '就绪';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 12px;
+}
+.battle-field.dual .fighter.player {
+  position: relative;
+}
+
 .map-card.twin {
   border-color: #c9a227;
 }

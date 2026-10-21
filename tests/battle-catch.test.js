@@ -10,6 +10,7 @@ import {
   playHit,
   hasFighterFrames,
   loadFighterFrames,
+  preloadFighterFrames,
   clearFighterFrameCache,
   playFighterFrameStrip,
 } from '../js/battle-fx.js';
@@ -485,6 +486,56 @@ const missing = await loadFighterFrames('charmander', {
 });
 assert(missing === null, 'fighter frames missing → null');
 assert(!hasFighterFrames('charmander'), 'failed load clears hasFighterFrames');
+
+console.log('fighter frame parallel + preload');
+clearFighterFrameCache();
+{
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const parallelFrames = await loadFighterFrames('parallel_mon', {
+    loader: () => new Promise((resolve) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      setTimeout(() => {
+        inFlight -= 1;
+        resolve({ src: 'ok' });
+      }, 20);
+    }),
+  });
+  assert(parallelFrames?.length === 5, 'parallel load returns 5 frames');
+  assert(maxInFlight === 5, 'loads all five frames concurrently');
+}
+clearFighterFrameCache();
+{
+  let starts = 0;
+  const shared = loadFighterFrames('inflight_mon', {
+    loader: () => new Promise((resolve) => {
+      starts += 1;
+      setTimeout(() => resolve({ src: 'ok' }), 30);
+    }),
+  });
+  const again = loadFighterFrames('inflight_mon', {
+    loader: () => new Promise((resolve) => {
+      starts += 1;
+      setTimeout(() => resolve({ src: 'ok' }), 30);
+    }),
+  });
+  await Promise.all([shared, again]);
+  assert(starts === 5, 'in-flight load is shared across callers');
+}
+clearFighterFrameCache();
+{
+  const startedSpecies = new Set();
+  await preloadFighterFrames(['alpha', 'beta', 'alpha'], {
+    loader: (url) => {
+      const species = String(url).split('/')[3];
+      startedSpecies.add(species);
+      return Promise.resolve({ src: url });
+    },
+  });
+  assert(startedSpecies.has('alpha') && startedSpecies.has('beta'), 'preload starts both species');
+  assert(hasFighterFrames('alpha') && hasFighterFrames('beta'), 'preload caches both species');
+}
 const fallback = await playHit({
   side: 'player',
   attackerSpeciesId: 'charmander',

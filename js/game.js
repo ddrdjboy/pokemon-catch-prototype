@@ -45,6 +45,12 @@ import {
   resolveTurn,
   resolveFoeOnlyTurn,
 } from './battle.js';
+import {
+  withBattleState,
+  speciesMoveList,
+  moveTarget,
+  chooseDualFoeCmd,
+} from './battle-moves.js';
 import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
 import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx } from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
@@ -85,6 +91,10 @@ let dualPickUids = [];
 let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
+let dualCmdPhase = null; // null | 'action' | 'target' | 'switch'
+let dualCmdSlot = 0;
+let dualCmds = []; // length 2
+let pendingMove = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -126,6 +136,14 @@ function closeItemPanel() {
 function setBattleActionBusy(busy) {
   $('btn-attack').disabled = busy;
   $('btn-flee-battle').disabled = busy;
+  document.querySelectorAll('#move-buttons button').forEach((el) => {
+    if (busy) el.disabled = true;
+    else if (!el.dataset.locked) el.disabled = false;
+  });
+  for (const id of ['btn-switch-cmd', 'btn-cmd-back', 'btn-cmd-undo']) {
+    const el = $(id);
+    if (el) el.disabled = busy;
+  }
   if (busy) {
     $('btn-item').disabled = true;
     closeItemPanel();
@@ -142,6 +160,23 @@ function resetAttackButton() {
   battleBusy = false;
   continueResolver = null;
   updateItemButton();
+  if (battle?.dual) {
+    beginDualCommandPhase();
+    return;
+  }
+  dualCmdPhase = null;
+  dualCmds = [null, null];
+  pendingMove = null;
+  setDualCmdChrome({
+    hint: '',
+    showMoves: false,
+    showSwitch: false,
+    showBack: false,
+    showUndo: false,
+    hideAttack: false,
+  });
+  clearTargetHighlight();
+  markReadySlots();
 }
 
 function waitForContinue(message) {
@@ -150,15 +185,185 @@ function waitForContinue(message) {
     const btn = $('btn-attack');
     btn.textContent = '继续';
     btn.disabled = false;
+    btn.classList.remove('hidden');
+    $('move-buttons')?.classList.add('hidden');
+    $('btn-switch-cmd')?.classList.add('hidden');
+    $('btn-cmd-back')?.classList.add('hidden');
+    $('btn-cmd-undo')?.classList.add('hidden');
     $('btn-item').disabled = true;
     closeItemPanel();
     continueResolver = () => {
       btn.disabled = true;
       btn.textContent = attackLabel();
+      if (battle?.dual) btn.classList.add('hidden');
       continueResolver = null;
       resolve();
     };
   });
+}
+
+function livingDualSlots(side) {
+  const arr = side === 'player' ? battle.players : battle.foes;
+  return arr.map((mon, index) => ({ mon, index })).filter((x) => x.mon?.hp > 0);
+}
+
+function nextDualCmdSlot(from = 0) {
+  for (let i = from; i < 2; i += 1) {
+    if (battle.players[i]?.hp > 0 && !dualCmds[i]) return i;
+  }
+  return -1;
+}
+
+function setDualCmdChrome({ hint, showMoves, showSwitch, showBack, showUndo, hideAttack }) {
+  const hintEl = $('battle-cmd-hint');
+  if (hintEl) {
+    hintEl.textContent = hint || '';
+    hintEl.classList.toggle('hidden', !hint);
+  }
+  $('btn-attack')?.classList.toggle('hidden', !!hideAttack);
+  $('move-buttons')?.classList.toggle('hidden', !showMoves);
+  $('btn-switch-cmd')?.classList.toggle('hidden', !showSwitch);
+  $('btn-cmd-back')?.classList.toggle('hidden', !showBack);
+  $('btn-cmd-undo')?.classList.toggle('hidden', !showUndo);
+}
+
+function clearTargetHighlight() {
+  document.querySelectorAll('#battle-field .fighter').forEach((el) => {
+    el.classList.remove('targetable', 'target-dim');
+  });
+}
+
+function markReadySlots() {
+  document.querySelectorAll('#battle-field .fighter.player').forEach((el) => {
+    const slot = Number(el.dataset.slot);
+    el.classList.toggle('cmd-ready', !!dualCmds[slot]);
+  });
+}
+
+function renderDualMoveButtons(mon) {
+  const box = $('move-buttons');
+  box.innerHTML = '';
+  const kit = speciesMoveList(SPECIES[mon.speciesId]);
+  for (const move of kit) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const kind = moveTarget(move);
+    if (move.effect) {
+      btn.textContent = `${move.name} · ${move.effect === 'heal' ? '回复' : move.effect === 'atk' ? '加攻' : '加防'}`;
+      btn.disabled = !!mon.usedUtility;
+      if (mon.usedUtility) btn.dataset.locked = '1';
+    } else {
+      btn.textContent = `${move.name} · ${typeLabel(move.type)} · 威力 ${move.power}${kind === 'foes' ? ' · 全体' : ''}`;
+    }
+    btn.addEventListener('click', () => onDualPickMove(move));
+    box.appendChild(btn);
+  }
+}
+
+function beginDualCommandPhase() {
+  dualCmds = [null, null];
+  dualCmdSlot = nextDualCmdSlot(0);
+  pendingMove = null;
+  clearTargetHighlight();
+  battleBusy = false;
+  if (dualCmdSlot < 0) return;
+  enterDualAction(dualCmdSlot);
+}
+
+function enterDualAction(slot) {
+  dualCmdPhase = 'action';
+  dualCmdSlot = slot;
+  pendingMove = null;
+  clearTargetHighlight();
+  const mon = battle.players[slot];
+  renderDualMoveButtons(mon);
+  const undo = slot > 0 && dualCmds.some(Boolean);
+  setDualCmdChrome({
+    hint: `请为 ${SPECIES[mon.speciesId].name} 选择行动`,
+    showMoves: true,
+    showSwitch: true,
+    showBack: false,
+    showUndo: undo,
+    hideAttack: true,
+  });
+  markReadySlots();
+  setBattleActionBusy(false);
+}
+
+function legalTargetSlots(kind, actorIndex) {
+  if (kind === 'self') return { side: 'player', slots: [actorIndex] };
+  if (kind === 'ally' || kind === 'allies') {
+    return { side: 'player', slots: livingDualSlots('player').map((x) => x.index) };
+  }
+  return { side: 'foe', slots: livingDualSlots('foe').map((x) => x.index) };
+}
+
+function enterDualTarget(move) {
+  const kind = moveTarget(move);
+  const { side, slots } = legalTargetSlots(kind, dualCmdSlot);
+  if (kind === 'self' || slots.length <= 1) {
+    const idx = kind === 'self' ? dualCmdSlot : slots[0];
+    commitDualMove(move, side, idx ?? 0);
+    return;
+  }
+  dualCmdPhase = 'target';
+  pendingMove = move;
+  setDualCmdChrome({
+    hint: kind === 'foes' || kind === 'allies' ? '将打击该侧全体 — 点击确认' : '选择目标',
+    showMoves: false,
+    showSwitch: false,
+    showBack: true,
+    showUndo: false,
+    hideAttack: true,
+  });
+  document.querySelectorAll(`#battle-field .fighter.${side}`).forEach((el) => {
+    const slot = Number(el.dataset.slot);
+    const ok = slots.includes(slot);
+    el.classList.toggle('targetable', ok);
+    el.classList.toggle('target-dim', !ok);
+  });
+  document.querySelectorAll(`#battle-field .fighter:not(.${side})`).forEach((el) => {
+    el.classList.add('target-dim');
+  });
+}
+
+function commitDualMove(move, targetSide, targetIndex) {
+  dualCmds[dualCmdSlot] = { type: 'move', move, targetSide, targetIndex };
+  pendingMove = null;
+  clearTargetHighlight();
+  const next = nextDualCmdSlot(0);
+  if (next < 0) {
+    void resolveDualCommands();
+    return;
+  }
+  enterDualAction(next);
+}
+
+function onDualPickMove(move) {
+  if (dualCmdPhase !== 'action' || battleBusy) return;
+  enterDualTarget(move);
+}
+
+async function resolveDualCommands() {
+  dualCmdPhase = null;
+  setDualCmdChrome({ hint: '', showMoves: false, showSwitch: false, showBack: false, showUndo: false, hideAttack: true });
+  clearTargetHighlight();
+  markReadySlots();
+  battleBusy = true;
+  setBattleActionBusy(true);
+  try {
+    const startPlayers = battle.players.map((mon) => ({ ...mon }));
+    const startFoes = battle.foes.map((mon) => ({ ...mon }));
+    const foeCmds = startFoes.map((mon, index) => (
+      mon.hp > 0 ? chooseDualFoeCmd(withBattleState(mon), index, startPlayers) : null
+    ));
+    const turn = resolveDualTurn(startPlayers, startFoes, Math.random, dualCmds, foeCmds);
+    await playDualTurnHits(turn);
+    finishTurnOutcome(turn);
+  } catch (err) {
+    console.error(err);
+    beginDualCommandPhase();
+  }
 }
 
 function loadState() {
@@ -828,6 +1033,8 @@ function startDualBattle(playerMons) {
     allies: null,
   };
   renderBattle();
+  battle.players = battle.players.map(withBattleState);
+  battle.foes = battle.foes.map(withBattleState);
   $('battle-log').innerHTML = '<p>双打对战开始！</p>';
   appendLog(`${SPECIES[players[0].speciesId].name} 与 ${SPECIES[players[1].speciesId].name} 同时出战！`);
   playBattleBgm({
@@ -835,7 +1042,9 @@ function startDualBattle(playerMons) {
     playerLevel: players[0].level,
     foeLevel: Math.max(...foes.map((f) => f.level)),
   });
-  resetAttackButton();
+  battleBusy = false;
+  continueResolver = null;
+  beginDualCommandPhase();
   showScreen('battle');
 }
 
@@ -1281,19 +1490,12 @@ async function onAttack() {
     continueResolver();
     return;
   }
+  if (battle?.dual) return;
   if (!battle || battleBusy) return;
   battleBusy = true;
   setBattleActionBusy(true);
 
   try {
-    if (battle.dual) {
-      const startPlayers = battle.players.map((mon) => ({ ...mon }));
-      const startFoes = battle.foes.map((mon) => ({ ...mon }));
-      const turn = resolveDualTurn(startPlayers, startFoes);
-      await playDualTurnHits(turn);
-      finishTurnOutcome(turn);
-      return;
-    }
     const startPlayer = { ...battle.player };
     const startFoe = { ...battle.foe };
     const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
@@ -1351,6 +1553,20 @@ async function onUseItem(itemId) {
   closeItemPanel();
   battleBusy = true;
   setBattleActionBusy(true);
+  if (battle.dual) {
+    dualCmds = [null, null];
+    dualCmdPhase = null;
+    pendingMove = null;
+    clearTargetHighlight();
+    setDualCmdChrome({
+      hint: '',
+      showMoves: false,
+      showSwitch: false,
+      showBack: false,
+      showUndo: false,
+      hideAttack: true,
+    });
+  }
 
   state.items[itemId] -= 1;
   fighter.hp = fieldMon.hp;
@@ -1369,7 +1585,10 @@ async function onUseItem(itemId) {
     if (battle.dual) {
       const startPlayers = battle.players.map((mon) => ({ ...mon }));
       const startFoes = battle.foes.map((mon) => ({ ...mon }));
-      const turn = resolveDualItemTurn(startPlayers, startFoes);
+      const foeCmds = startFoes.map((mon, index) => (
+        mon.hp > 0 ? chooseDualFoeCmd(withBattleState(mon), index, startPlayers) : null
+      ));
+      const turn = resolveDualItemTurn(startPlayers, startFoes, Math.random, foeCmds);
       await playDualTurnHits(turn);
       finishTurnOutcome(turn);
       return;
@@ -1744,6 +1963,26 @@ $('btn-cancel-pick').addEventListener('click', () => {
   else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
 });
 $('btn-attack').addEventListener('click', onAttack);
+$('btn-cmd-back')?.addEventListener('click', () => {
+  if (dualCmdPhase === 'target') enterDualAction(dualCmdSlot);
+});
+$('btn-cmd-undo')?.addEventListener('click', () => {
+  if (dualCmdPhase !== 'action') return;
+  for (let i = dualCmdSlot - 1; i >= 0; i -= 1) {
+    if (dualCmds[i]) {
+      dualCmds[i] = null;
+      enterDualAction(i);
+      return;
+    }
+  }
+});
+$('battle-field')?.addEventListener('click', (e) => {
+  if (dualCmdPhase !== 'target' || !pendingMove) return;
+  const fighter = e.target.closest?.('.fighter.targetable');
+  if (!fighter) return;
+  const side = fighter.classList.contains('foe') ? 'foe' : 'player';
+  commitDualMove(pendingMove, side, Number(fighter.dataset.slot));
+});
 $('btn-item').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   if ($('item-panel').classList.contains('hidden')) openItemPanel();

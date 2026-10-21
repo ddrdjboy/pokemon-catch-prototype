@@ -34,6 +34,12 @@ import {
   getDexDetail,
   canEnterSpiritHall,
 } from './data.js';
+import { castMoveNames } from './final-move-kits.js';
+import {
+  withBattleState,
+  speciesMoveList,
+  chooseFoeMove,
+} from './battle-moves.js';
 import {
   ITEMS,
   emptyItems,
@@ -49,7 +55,14 @@ import {
   resolveTurn,
   resolveFoeOnlyTurn,
 } from './battle.js';
-import { hasFighterFrames, normalizeBattleAnim, playDamageNumber, playFighterFrameStrip, playHit } from './battle-fx.js';
+import {
+  hasFighterFrames,
+  normalizeBattleAnim,
+  playDamageNumber,
+  playFighterFrameStrip,
+  playHit,
+  preloadFighterFrames,
+} from './battle-fx.js';
 import {
   unlockAudio,
   playExploreBgm,
@@ -64,6 +77,7 @@ import { gainExperience, xpReward, tryEvolve } from './level.js';
 import {
   createMazeRun,
   stepMaze,
+  findMazePath,
   removeRoamer,
   markFloorBossDefeated,
   advanceMazeFloor,
@@ -76,6 +90,8 @@ import {
   partyCardClassName,
   markerClassName,
 } from './boss-ui.js';
+import { partyIndividualView } from './party-detail.js';
+import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from './maze-minimap.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
@@ -88,6 +104,21 @@ const MAZE_VIEW_W = 11;
 const MAZE_VIEW_H = 9;
 
 const BATTLE_ANIM_ORDER = ['off', 'light', 'medium', 'heavy'];
+const BATTLE_MOVE_LAYOUTS = ['list', 'grid', 'primary'];
+const BATTLE_MOVE_LAYOUT_LABEL = { list: '列表', grid: '棋盘', primary: '主招' };
+
+function normalizeBattleMoveLayout(value) {
+  return BATTLE_MOVE_LAYOUTS.includes(value) ? value : 'list';
+}
+
+function applyBattleMoveLayout() {
+  const layout = normalizeBattleMoveLayout(state.battleMoveLayout);
+  state.battleMoveLayout = layout;
+  const bar = $('battle-actions');
+  if (bar) bar.dataset.layout = layout;
+  const btn = $('btn-move-layout');
+  if (btn) btn.textContent = BATTLE_MOVE_LAYOUT_LABEL[layout];
+}
 const BATTLE_ANIM_LABEL = {
   off: '关闭',
   light: '轻量',
@@ -119,8 +150,14 @@ let dualPickUids = [];
 let switchSlotIndex = null;
 let battleBusy = false;
 let continueResolver = null;
-let bagSelectedItemId = null;
+let itemsUiSelectedId = null;
 let mazeRun = null;
+let mazePath = [];
+let mazeDest = null;
+let mazeWalkTimer = null;
+let mazeStickDir = null;
+let mazeStickTimer = null;
+let mazeStickPointer = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -129,10 +166,114 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+let dualMovePicks = [null, null];
+let dualMoveSlot = 0;
+
 function attackLabel() {
   if (battle?.allies) return '小队攻击';
   if (battle?.dual) return '双打攻击';
   return '攻击';
+}
+
+function ensureBattleStateOnField() {
+  if (!battle) return;
+  if (battle.dual) {
+    battle.players = battle.players.map((mon) => withBattleState(mon));
+    battle.foes = battle.foes.map((mon) => withBattleState(mon));
+    battle.player = battle.players[0];
+    battle.foe = battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+  } else {
+    battle.player = withBattleState(battle.player);
+    battle.foe = withBattleState(battle.foe);
+    if (battle.allies) battle.allies = battle.allies.map((ally) => withBattleState(ally));
+  }
+}
+
+function setMoveButtonsBusy(busy) {
+  const root = $('move-buttons');
+  if (!root) return;
+  for (const btn of root.querySelectorAll('button')) {
+    btn.disabled = busy || btn.dataset.locked === '1';
+  }
+}
+
+function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) {
+  const root = $('move-buttons');
+  const prompt = $('move-prompt');
+  if (!root) return;
+  root.innerHTML = '';
+  if (continueMode) {
+    if (prompt) prompt.classList.add('hidden');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'primary';
+    btn.textContent = '继续';
+    btn.addEventListener('click', () => {
+      if (continueResolver) continueResolver();
+    });
+    root.appendChild(btn);
+    return;
+  }
+  if (!mon) {
+    if (prompt) prompt.classList.add('hidden');
+    return;
+  }
+  if (battle?.dual && dualSlot != null && prompt) {
+    prompt.textContent = `请为 ${SPECIES[mon.speciesId].name} 选择技能`;
+    prompt.classList.remove('hidden');
+  } else if (prompt) {
+    prompt.classList.add('hidden');
+  }
+  for (const move of speciesMoveList(SPECIES[mon.speciesId])) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'primary move-btn';
+    const name = document.createElement('span');
+    name.className = 'move-btn-name';
+    name.textContent = move.name;
+    const tags = document.createElement('span');
+    tags.className = 'move-btn-tags tags';
+    if (move.effect) {
+      const effectTag = document.createElement('span');
+      effectTag.className = 'tag effect';
+      effectTag.textContent = { heal: '回复', atk: '加攻', def: '加防' }[move.effect];
+      tags.appendChild(effectTag);
+      if (mon.usedUtility) {
+        btn.disabled = true;
+        btn.dataset.locked = '1';
+      }
+    } else {
+      const typeTag = document.createElement('span');
+      typeTag.className = typeTagClass(move.type);
+      typeTag.textContent = typeLabel(move.type);
+      const powerTag = document.createElement('span');
+      powerTag.className = 'tag power';
+      powerTag.textContent = `威力 ${move.power}`;
+      tags.appendChild(typeTag);
+      tags.appendChild(powerTag);
+    }
+    btn.appendChild(name);
+    btn.appendChild(tags);
+    btn.addEventListener('click', () => onPickMove(move, dualSlot));
+    root.appendChild(btn);
+  }
+}
+
+function refreshMoveButtons() {
+  applyBattleMoveLayout();
+  if (!battle) {
+    renderMoveButtons(null);
+    return;
+  }
+  ensureBattleStateOnField();
+  if (battle.dual) {
+    const slot = battle.players.findIndex((p) => p.hp > 0);
+    dualMoveSlot = slot < 0 ? 0 : slot;
+    dualMovePicks = [null, null];
+    renderMoveButtons(battle.players[dualMoveSlot], { dualSlot: dualMoveSlot });
+    return;
+  }
+  renderMoveButtons(battle.player);
 }
 
 function onFieldMons() {
@@ -193,56 +334,55 @@ function ownedItemUsableInBattle(item) {
   return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
 }
 
-function canUseBattleItem() {
-  if (!battle || battleBusy || continueResolver) return false;
-  return Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
+function isBattleScreenActive() {
+  return !!battle && !screens.battle.classList.contains('hidden');
 }
 
 function updateItemButton() {
-  const btn = $('btn-item');
+  const btn = $('btn-items');
   if (!btn) return;
-  btn.disabled = !canUseBattleItem();
+  btn.disabled = false;
+}
+
+function closeItemsModal() {
+  itemsUiSelectedId = null;
+  $('items-modal')?.classList.add('hidden');
+  $('items-step-list')?.classList.remove('hidden');
+  $('items-step-target')?.classList.add('hidden');
+  const title = $('items-title');
+  if (title) title.textContent = '道具';
 }
 
 function closeItemPanel() {
-  $('item-panel')?.classList.add('hidden');
+  closeItemsModal();
 }
 
 function setBattleActionBusy(busy) {
-  $('btn-attack').disabled = busy;
+  setMoveButtonsBusy(busy);
   $('btn-flee-battle').disabled = busy;
-  if (busy) {
-    $('btn-item').disabled = true;
-    closeItemPanel();
-  } else {
-    updateItemButton();
-  }
+  if (busy) closeItemPanel();
+  updateItemButton();
 }
 
 function resetAttackButton() {
-  const btn = $('btn-attack');
-  btn.textContent = attackLabel();
-  btn.disabled = false;
   $('btn-flee-battle').disabled = false;
   battleBusy = false;
   continueResolver = null;
+  refreshMoveButtons();
   updateItemButton();
 }
 
 function waitForContinue(message) {
   appendLog(message);
   return new Promise((resolve) => {
-    const btn = $('btn-attack');
-    btn.textContent = '继续';
-    btn.disabled = false;
-    $('btn-item').disabled = true;
     closeItemPanel();
+    renderMoveButtons(null, { continueMode: true });
     continueResolver = () => {
-      btn.disabled = true;
-      btn.textContent = attackLabel();
       continueResolver = null;
+      refreshMoveButtons();
       resolve();
     };
+    updateItemButton();
   });
 }
 
@@ -285,6 +425,7 @@ function hydrateState(parsed) {
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
+  s.battleMoveLayout = normalizeBattleMoveLayout(s.battleMoveLayout);
   s.damageNumbers = s.damageNumbers !== false;
   s.musicEnabled = s.musicEnabled !== false;
   s.sfxEnabled = s.sfxEnabled !== false;
@@ -328,13 +469,14 @@ function showScreen(name) {
   for (const [key, el] of Object.entries(screens)) {
     el.classList.toggle('hidden', key !== name);
   }
+  updateItemButton();
 }
 
 function refreshHeader() {
-  $('coin-display').textContent = `金币 ${state.coins}`;
-  $('fruit-display').textContent = `异次元果 ${state.riftFruit || 0}`;
+  $('coin-display').innerHTML = `<span class="coin-icon" aria-hidden="true"></span>${state.coins}`;
+  $('fruit-display').textContent = `🍇 ${state.riftFruit || 0}`;
   const twinEl = $('twin-key-display');
-  if (twinEl) twinEl.textContent = `双子钥匙 ${state.twinKeys || 0}`;
+  if (twinEl) twinEl.textContent = `🔑 ${state.twinKeys || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
 }
 
@@ -355,6 +497,7 @@ function closeSettings() {
 function refreshSettingsPanel() {
   refreshBattleAnimButton();
   renderCatchStyle();
+  applyBattleMoveLayout();
   const musicBtn = $('btn-music');
   const sfxBtn = $('btn-sfx');
   const numBtn = $('btn-damage-numbers');
@@ -535,31 +678,49 @@ function renderDex() {
     row.innerHTML = `
       <img src="${spriteUrl(e.sprite)}" alt="${e.name}" />
       <span class="name">${e.name}</span>
-      <span class="tag type">${typeLabel(e.type)}</span>
+      <span class="${typeTagClass(e.type)}">${typeLabel(e.type)}</span>
     `;
     row.addEventListener('click', () => openDexDetail(e.id));
     list.appendChild(row);
   }
 }
 
-function renderDexDetail(detail) {
+function renderDexDetail(detail, mon = null) {
   const root = $('dex-detail');
   const catchPct = Math.round((detail.catchRate ?? 0) * 100);
+  const effectLabel = { heal: '回复', atk: '加攻', def: '加防' };
   const moveLines = detail.moves
-    .map((m) => `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`)
+    .map((m) => (
+      m.effect
+        ? `<li>${m.name}（${effectLabel[m.effect]}）</li>`
+        : `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`
+    ))
     .join('');
   const evo = detail.evolvesToName
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`
     : '进化：无';
   const canAnim = hasFighterFrames(detail.id);
+  const individual = partyIndividualView(mon);
+  const individualHtml = individual
+    ? `<div class="individual">
+        <div>个体：Lv.${individual.level} · HP ${individual.hpText}</div>
+        <div>能力：攻 ${individual.atk} · 防 ${individual.def} · 速 ${individual.spd}</div>
+        <div>经验：${individual.expText}</div>
+        <div class="meta">
+          ${individual.shiny ? '<span class="tag shiny">闪光</span>' : ''}
+          ${individual.fainted ? '<span class="tag">倒地</span>' : ''}
+        </div>
+      </div>`
+    : '';
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
     <div class="dex-hero-wrap">
       <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
     </div>
     ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
+    ${individualHtml}
     <div class="meta">
-      <span class="tag type">${typeLabel(detail.type)}</span>
+      <span class="${typeTagClass(detail.type)}">${typeLabel(detail.type)}</span>
       ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
     </div>
     <div class="stats">种族值：HP ${detail.base.hp} · 攻 ${detail.base.atk} · 防 ${detail.base.def} · 速 ${detail.base.spd}</div>
@@ -581,11 +742,16 @@ function renderDexDetail(detail) {
   }
 }
 
-function openDexDetail(speciesId) {
+function openDexDetail(speciesId, mon = null) {
   const detail = getDexDetail(speciesId, SPECIES);
   if (!detail) return;
-  renderDexDetail(detail);
+  renderDexDetail(detail, mon);
   $('dex-detail-modal').classList.remove('hidden');
+}
+
+function openPartyDetail(mon) {
+  closePartyPopover();
+  openDexDetail(mon.speciesId, mon);
 }
 
 function closeDexDetail() {
@@ -671,6 +837,7 @@ function buildPartyPopover(mon, index) {
     });
     pop.appendChild(btn);
   };
+  add('详情', false, '', () => openPartyDetail(mon));
   add('左移', !canShiftParty(mon.uid, -1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, -1)));
   add('右移', !canShiftParty(mon.uid, 1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, 1)));
   if (active) {
@@ -743,6 +910,10 @@ function typeLabel(t) {
   }[t] || t;
 }
 
+function typeTagClass(t) {
+  return `tag type type-${t || 'normal'}`;
+}
+
 function setMapNote(text) {
   const note = $('map-note');
   if (note) note.textContent = text || '';
@@ -791,6 +962,7 @@ function tryEnterMap(mapId) {
 }
 
 function startMazeRun() {
+  stopMazeMotion();
   mazeRun = createMazeRun({ floor: 1 });
   currentMapId = 'spirit_hall';
   renderMaze();
@@ -798,6 +970,7 @@ function startMazeRun() {
 }
 
 function endMazeRun({ message } = {}) {
+  stopMazeMotion();
   mazeRun = null;
   playExploreBgm();
   showScreen('select');
@@ -862,9 +1035,12 @@ function mazeViewSize() {
   };
 }
 
-const MAZE_HELP_TEXT = '点击角色相邻格子移动。地图会卷动，角色始终居中。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const MAZE_HELP_TEXT = '点任意可走格子，角色会自动走过去。也可以用左侧摇杆移动。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const MAZE_STEP_MS = 320;
+const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
 
 let mazeToastTimer = null;
+let appToastTimer = null;
 
 function mazePlayerSprite() {
   const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
@@ -884,12 +1060,219 @@ function showMazeToast(text, ms = 4200) {
   }, ms);
 }
 
+function showAppToast(text, ms = 4000) {
+  const el = $('app-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    appToastTimer = null;
+  }, ms);
+}
+
 function onMazeTileClick(x, y) {
   if (!mazeRun) return;
-  const dx = x - mazeRun.player.x;
-  const dy = y - mazeRun.player.y;
-  if (Math.abs(dx) + Math.abs(dy) !== 1) return;
-  tryMazeStep(dx, dy);
+  const path = findMazePath(mazeRun, x, y);
+  if (!path.length) return;
+  mazeStickPointer = null;
+  stopMazeStick();
+  mazePath = path;
+  mazeDest = path[path.length - 1];
+  showMazeDest();
+  if (!mazeWalkTimer) scheduleMazeStep();
+}
+
+function clearMazePath() {
+  mazePath = [];
+  mazeDest = null;
+  if (mazeWalkTimer) {
+    clearTimeout(mazeWalkTimer);
+    mazeWalkTimer = null;
+  }
+  $('maze-world')?.querySelector('.maze-dest')?.remove();
+}
+
+function stopMazeStick() {
+  mazeStickDir = null;
+  if (mazeStickTimer) {
+    clearInterval(mazeStickTimer);
+    mazeStickTimer = null;
+  }
+  const knob = $('maze-stick-knob');
+  if (knob) knob.style.transform = '';
+  $('maze-stick')?.removeAttribute('data-dir');
+}
+
+function stopMazeMotion() {
+  clearMazePath();
+  stopMazeStick();
+}
+
+function showMazeDest() {
+  const world = $('maze-world');
+  if (!world || !mazeDest) return;
+  let el = world.querySelector('.maze-dest');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'maze-dest';
+    world.appendChild(el);
+  }
+  const tile = mazeTilePx();
+  el.style.left = `${mazeDest.x * tile}px`;
+  el.style.top = `${mazeDest.y * tile}px`;
+  el.style.width = `${tile}px`;
+  el.style.height = `${tile}px`;
+}
+
+function placeMazeCamera() {
+  const world = $('maze-world');
+  if (!world || !mazeRun) return;
+  const tile = mazeTilePx();
+  const view = mazeViewSize();
+  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
+  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
+  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
+}
+
+function refreshMazeMinimap() {
+  const canvas = $('maze-minimap');
+  if (!canvas || !mazeRun) return;
+  const cssW = parseFloat(getComputedStyle(canvas).width) || MAZE_MINIMAP_SIZE;
+  const size = Math.round(cssW) || MAZE_MINIMAP_SIZE;
+  const ctx = canvas.getContext('2d');
+  paintMazeMinimap(ctx, mazeRun, size);
+}
+
+function syncMazePlayer() {
+  const world = $('maze-world');
+  const playerImg = world?.querySelector('.maze-entity.player');
+  if (!world || !playerImg || !mazeRun) return;
+  const tile = mazeTilePx();
+  playerImg.style.left = `${mazeRun.player.x * tile}px`;
+  playerImg.style.top = `${mazeRun.player.y * tile}px`;
+  placeMazeCamera();
+  refreshMazeMinimap();
+}
+
+function scheduleMazeStep() {
+  mazeWalkTimer = setTimeout(runMazeStep, MAZE_STEP_MS);
+}
+
+function runMazeStep() {
+  mazeWalkTimer = null;
+  if (!mazeRun || !mazePath.length) {
+    clearMazePath();
+    return;
+  }
+  const next = mazePath[0];
+  const dx = next.x - mazeRun.player.x;
+  const dy = next.y - mazeRun.player.y;
+  if (Math.abs(dx) + Math.abs(dy) !== 1) {
+    clearMazePath();
+    return;
+  }
+  mazePath.shift();
+  const event = tryMazeStep(dx, dy);
+  if (event || !mazeRun || !mazePath.length) {
+    clearMazePath();
+  } else {
+    scheduleMazeStep();
+  }
+}
+
+function stickVector(clientX, clientY) {
+  const el = $('maze-stick');
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const dx = clientX - (rect.left + rect.width / 2);
+  const dy = clientY - (rect.top + rect.height / 2);
+  const dead = 16;
+  if (dx * dx + dy * dy < dead * dead) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? { dir: [1, 0], name: 'e' } : { dir: [-1, 0], name: 'w' };
+  return dy > 0 ? { dir: [0, 1], name: 's' } : { dir: [0, -1], name: 'n' };
+}
+
+function placeStickKnob(clientX, clientY) {
+  const el = $('maze-stick');
+  const knob = $('maze-stick-knob');
+  if (!el || !knob) return;
+  const rect = el.getBoundingClientRect();
+  let dx = clientX - (rect.left + rect.width / 2);
+  let dy = clientY - (rect.top + rect.height / 2);
+  const max = rect.width * 0.28;
+  const len = Math.hypot(dx, dy) || 1;
+  if (len > max) {
+    dx = (dx / len) * max;
+    dy = (dy / len) * max;
+  }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
+function pauseStickSteps() {
+  mazeStickDir = null;
+  if (mazeStickTimer) {
+    clearInterval(mazeStickTimer);
+    mazeStickTimer = null;
+  }
+  $('maze-stick')?.removeAttribute('data-dir');
+}
+
+function applyMazeStick(e) {
+  if (!mazeRun) return;
+  placeStickKnob(e.clientX, e.clientY);
+  const next = stickVector(e.clientX, e.clientY);
+  if (!next) {
+    pauseStickSteps();
+    return;
+  }
+  if (!mazeStickDir) clearMazePath();
+  mazeStickDir = next.dir;
+  $('maze-stick')?.setAttribute('data-dir', next.name);
+  if (!mazeStickTimer) {
+    tryMazeStep(mazeStickDir[0], mazeStickDir[1]);
+    if (!mazeRun || !mazeStickDir) return;
+    mazeStickTimer = setInterval(() => {
+      if (!mazeStickDir || !mazeRun) return;
+      tryMazeStep(mazeStickDir[0], mazeStickDir[1]);
+    }, MAZE_STEP_MS);
+  }
+}
+
+function bindMazeStick() {
+  const stick = $('maze-stick');
+  if (!stick || stick.dataset.bound) return;
+  stick.dataset.bound = '1';
+  stick.addEventListener('pointerdown', (e) => {
+    if (!mazeRun) return;
+    mazeStickPointer = e.pointerId;
+    stick.setPointerCapture(e.pointerId);
+    applyMazeStick(e);
+    e.preventDefault();
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (mazeStickPointer !== e.pointerId) return;
+    if (!stick.hasPointerCapture(e.pointerId)) return;
+    applyMazeStick(e);
+  });
+  const end = (e) => {
+    if (stick.hasPointerCapture(e.pointerId)) stick.releasePointerCapture(e.pointerId);
+    if (mazeStickPointer !== e.pointerId) return;
+    mazeStickPointer = null;
+    stopMazeStick();
+  };
+  stick.addEventListener('pointerup', end);
+  stick.addEventListener('pointercancel', end);
+}
+
+function onMazeWorldClick(e) {
+  const cell = e.target.closest('.maze-tile');
+  if (!cell || !mazeRun) return;
+  const x = Number(cell.dataset.mazeX);
+  const y = Number(cell.dataset.mazeY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  onMazeTileClick(x, y);
 }
 
 function renderMaze() {
@@ -898,11 +1281,8 @@ function renderMaze() {
   const world = $('maze-world');
   if (!world) return;
   const tile = mazeTilePx();
-  const view = mazeViewSize();
   const h = mazeRun.grid.length;
   const w = mazeRun.grid[0].length;
-  const px = mazeRun.player.x;
-  const py = mazeRun.player.y;
   world.style.width = `${w * tile}px`;
   world.style.height = `${h * tile}px`;
   world.innerHTML = '';
@@ -911,16 +1291,15 @@ function renderMaze() {
     for (let x = 0; x < w; x += 1) {
       const kind = mazeRun.grid[y][x];
       const cell = document.createElement('div');
-      const adjacent = Math.abs(x - px) + Math.abs(y - py) === 1 && kind !== 'wall';
-      cell.className = `maze-tile ${kind}${adjacent ? ' adjacent' : ''}`;
+      const walkable = kind !== 'wall';
+      cell.className = `maze-tile ${kind}${walkable ? ' walkable' : ''}`;
       cell.style.left = `${x * tile}px`;
       cell.style.top = `${y * tile}px`;
       cell.style.width = `${tile}px`;
       cell.style.height = `${tile}px`;
-      if (adjacent) {
+      if (walkable) {
         cell.dataset.mazeX = String(x);
         cell.dataset.mazeY = String(y);
-        cell.addEventListener('click', () => onMazeTileClick(x, y));
       }
       world.appendChild(cell);
     }
@@ -967,27 +1346,29 @@ function renderMaze() {
   playerImg.style.width = `${tile * 0.82}px`;
   playerImg.style.height = `${tile * 0.82}px`;
   world.appendChild(playerImg);
-
-  // Keep the player tile centered in the viewport (camera scrolls the world).
-  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
-  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
-  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
+  placeMazeCamera();
+  refreshMazeMinimap();
+  if (mazeDest) showMazeDest();
 }
 
 function tryMazeStep(dx, dy) {
-  if (!mazeRun) return;
+  if (!mazeRun) return null;
+  const beforeX = mazeRun.player.x;
+  const beforeY = mazeRun.player.y;
   const { run, event } = stepMaze(mazeRun, dx, dy);
   mazeRun = run;
-  renderMaze();
-  if (!event) return;
-  if (event.type === 'roamer') {
-    beginMazeRoamerBattle(event.roamer);
-    return;
+  if (event) {
+    stopMazeMotion();
+    renderMaze();
+    if (event.type === 'roamer') beginMazeRoamerBattle(event.roamer);
+    else if (event.type === 'stairs') {
+      if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
+      else afterFloorBossCleared();
+    }
+    return event;
   }
-  if (event.type === 'stairs') {
-    if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
-    else afterFloorBossCleared();
-  }
+  if (run.player.x !== beforeX || run.player.y !== beforeY) syncMazePlayer();
+  return null;
 }
 
 function beginMazeRoamerBattle(roamer) {
@@ -1103,7 +1484,7 @@ function foeIntro(enc) {
   const sp = SPECIES[enc.speciesId];
   const tags = `${enc.boss ? '（头目）' : ''}${enc.shiny ? '（闪光）' : ''}${sp.mega ? '（超级进化）' : ''}`;
   if (enc.squad) {
-    const skills = (sp.moves || [sp.move]).map((move) => move.name).join('、');
+    const skills = castMoveNames(sp, { squadBoss: true }).join('、');
     return `对手：${sp.name} Lv.${enc.level}${tags}。技能：${skills}。你和 3 只电脑宝可梦组队应战。`;
   }
   return `对手：野生的 ${sp.name} Lv.${enc.level}${tags}`;
@@ -1202,6 +1583,7 @@ function startDualBattle(playerMons) {
   });
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function startBattle(playerMon, { freshLog = true } = {}) {
@@ -1227,6 +1609,7 @@ function startBattle(playerMon, { freshLog = true } = {}) {
   } else appendLog(`上吧，${SPECIES[player.speciesId].name}！`);
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function fillDualSlot(playerMon) {
@@ -1245,6 +1628,7 @@ function fillDualSlot(playerMon) {
   renderBattle();
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function renderSprite(wrapId, mon) {
@@ -1288,9 +1672,8 @@ function renderFighterSlot(side, index, mon) {
     `;
   }
   if (skillsId && $(skillsId)) {
-    $(skillsId).textContent = sp.moves?.length
-      ? `技能 ${sp.moves.map((move) => move.name).join(' · ')}`
-      : '';
+    const names = castMoveNames(sp, { squadBoss: pendingEncounter?.squad && side === 'foe' });
+    $(skillsId).textContent = names.length ? `技能 ${names.join(' · ')}` : '';
   }
   setHpBar(hpId, mon.hp, mon.maxHp);
   renderSprite(wrapId, mon);
@@ -1382,6 +1765,26 @@ function refreshBattleAnimButton() {
   btn.textContent = `动画 · ${BATTLE_ANIM_LABEL[mode]}`;
 }
 
+function battleSpeciesIds() {
+  if (!battle) return [];
+  const ids = [];
+  if (battle.dual) {
+    for (const mon of battle.players || []) ids.push(mon?.speciesId);
+    for (const mon of battle.foes || []) ids.push(mon?.speciesId);
+  } else {
+    if (battle.player) ids.push(battle.player.speciesId);
+    if (battle.foe) ids.push(battle.foe.speciesId);
+    for (const mon of battle.allies || []) ids.push(mon?.speciesId);
+  }
+  return ids;
+}
+
+/** Fire-and-forget: warm heavy-mode fight frames while the battle screen is up. */
+function preloadBattleFighterFrames() {
+  if (normalizeBattleAnim(state.battleAnim) !== 'heavy') return;
+  void preloadFighterFrames(battleSpeciesIds());
+}
+
 function slotWrap(side, index) {
   const suffix = index === 0 ? '' : '-1';
   return $(side === 'player' ? `player-sprite-wrap${suffix}` : `foe-sprite-wrap${suffix}`);
@@ -1438,6 +1841,25 @@ async function playDualTurnHits(turn) {
     const line = turn.logs[i];
     appendLog(line.text);
     const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
+    if (line.effect) {
+      if (line.side === 'player' && line.actorIndex != null) {
+        battle.players[line.actorIndex] = { ...turn.players[line.actorIndex] };
+        renderFighterSlot('player', line.actorIndex, battle.players[line.actorIndex]);
+        if (line.effect === 'heal') {
+          showHealNumber(attackerEl, Math.floor(battle.players[line.actorIndex].maxHp * 0.5));
+        }
+      } else if (line.side === 'foe' && line.actorIndex != null) {
+        battle.foes[line.actorIndex] = { ...turn.foes[line.actorIndex] };
+        renderFighterSlot('foe', line.actorIndex, battle.foes[line.actorIndex]);
+        if (line.effect === 'heal') {
+          showHealNumber(attackerEl, Math.floor(battle.foes[line.actorIndex].maxHp * 0.5));
+        }
+      }
+      syncBattleHp();
+      await wait(HP_ANIM_MS);
+      if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+      continue;
+    }
     const stripPlayed = await playFighterFrameStrip(attackerEl, {
       speciesId: attackerSpeciesId,
       mode: state.battleAnim,
@@ -1494,6 +1916,23 @@ async function playTurnHits(turn, startPlayer, startFoe) {
     appendLog(line.text);
     const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
     playAttackSfx(line.moveType || 'normal');
+    if (line.effect) {
+      if (line.side === 'player') {
+        playerHp = turn.player.hp;
+        battle.player = { ...battle.player, ...turn.player, hp: playerHp };
+        setHpBar('player-hp', playerHp, battle.player.maxHp);
+        if (line.effect === 'heal') showHealNumber(attackerEl, Math.floor(battle.player.maxHp * 0.5));
+      } else if (line.side === 'foe') {
+        foeHp = turn.foe.hp;
+        battle.foe = { ...battle.foe, ...turn.foe, hp: foeHp };
+        setHpBar('foe-hp', foeHp, battle.foe.maxHp);
+        if (line.effect === 'heal') showHealNumber(attackerEl, Math.floor(battle.foe.maxHp * 0.5));
+      }
+      syncBattleHp();
+      await wait(HP_ANIM_MS);
+      if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+      continue;
+    }
     await playHit({
       side: line.side,
       attackerSpeciesId,
@@ -1581,14 +2020,14 @@ function finishDualTurnOutcome(turn) {
       return;
     }
     appendLog('同归于尽…你败北了。');
-    $('btn-attack').disabled = true;
+    setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
     setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
     return;
   }
   if (turn.result === 'lose') {
     appendLog('你没有可以继续对战的宝可梦了…');
-    $('btn-attack').disabled = true;
+    setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
     setTimeout(() => leaveBattle(), 900);
     return;
@@ -1660,31 +2099,20 @@ function finishTurnOutcome(turn) {
   setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
 }
 
-async function onAttack() {
-  if (continueResolver) {
-    continueResolver();
-    return;
-  }
-  if (!battle || battleBusy) return;
+async function runDualTurnWithPicks(picks) {
   battleBusy = true;
   setBattleActionBusy(true);
-
   try {
-    if (battle.dual) {
-      const startPlayers = battle.players.map((mon) => ({ ...mon }));
-      const startFoes = battle.foes.map((mon) => ({ ...mon }));
-      const turn = resolveDualTurn(startPlayers, startFoes);
-      await playDualTurnHits(turn);
-      finishTurnOutcome(turn);
-      return;
-    }
-    const startPlayer = { ...battle.player };
-    const startFoe = { ...battle.foe };
-    const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
-    const turn = startAllies
-      ? resolveSquadTurn(startPlayer, startAllies, startFoe)
-      : resolveTurn(startPlayer, startFoe);
-    await playTurnHits(turn, startPlayer, startFoe);
+    const startPlayers = battle.players.map((mon) => ({ ...mon }));
+    const startFoes = battle.foes.map((mon) => ({ ...mon }));
+    const foeMoves = startFoes.map((foe, index) => {
+      if (foe.hp <= 0) return null;
+      const target = startPlayers.find((p) => p.hp > 0 && startPlayers.indexOf(p) === index)
+        || startPlayers.find((p) => p.hp > 0);
+      return chooseFoeMove(foe, target || startPlayers[0]);
+    });
+    const turn = resolveDualTurn(startPlayers, startFoes, Math.random, picks, foeMoves);
+    await playDualTurnHits(turn);
     finishTurnOutcome(turn);
   } catch (err) {
     console.error(err);
@@ -1692,30 +2120,55 @@ async function onAttack() {
   }
 }
 
-function renderItemList() {
-  const list = $('item-list');
-  list.innerHTML = '';
-  for (const item of Object.values(ITEMS)) {
-    const owned = state.items?.[item.id] || 0;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'item-row';
-    row.disabled = !ownedItemUsableInBattle(item);
-    row.innerHTML = `
-      <span class="item-icon">${item.icon}</span>
-      <span class="item-name">${item.name}</span>
-      <span class="item-effect">${itemEffectLabel(item)}</span>
-      <span class="item-owned">×${owned}</span>
-    `;
-    row.addEventListener('click', () => onUseItem(item.id));
-    list.appendChild(row);
+async function onPickMove(move, dualSlot) {
+  if (continueResolver) {
+    continueResolver();
+    return;
   }
-}
+  if (!battle || battleBusy) return;
 
-function openItemPanel() {
-  if (!canUseBattleItem()) return;
-  renderItemList();
-  $('item-panel').classList.remove('hidden');
+  if (battle.dual) {
+    ensureBattleStateOnField();
+    let slot = dualSlot;
+    if (slot == null) {
+      slot = dualMovePicks[0] == null
+        ? battle.players.findIndex((p) => p.hp > 0)
+        : battle.players.findIndex((p, i) => p.hp > 0 && i > 0 && dualMovePicks[0] != null && dualMovePicks[i] == null);
+      if (slot < 0) slot = battle.players.findIndex((p) => p.hp > 0);
+    }
+    const actor = battle.players[slot];
+    if (!actor || actor.hp <= 0) return;
+    if (move.effect && actor.usedUtility) return;
+    dualMovePicks[slot] = move;
+    const next = battle.players.findIndex((p, i) => p.hp > 0 && dualMovePicks[i] == null);
+    if (next >= 0) {
+      dualMoveSlot = next;
+      renderMoveButtons(battle.players[next], { dualSlot: next });
+      return;
+    }
+    const picks = dualMovePicks.slice();
+    dualMovePicks = [null, null];
+    await runDualTurnWithPicks(picks);
+    return;
+  }
+
+  if (move.effect && battle.player.usedUtility) return;
+  battleBusy = true;
+  setBattleActionBusy(true);
+  try {
+    const startPlayer = { ...battle.player };
+    const startFoe = { ...battle.foe };
+    const foeMove = chooseFoeMove(startFoe, startPlayer);
+    const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
+    const turn = startAllies
+      ? resolveSquadTurn(startPlayer, startAllies, startFoe, Math.random, move, chooseFoeMove(startFoe, startPlayer))
+      : resolveTurn(startPlayer, startFoe, Math.random, move, foeMove);
+    await playTurnHits(turn, startPlayer, startFoe);
+    finishTurnOutcome(turn);
+  } catch (err) {
+    console.error(err);
+    resetAttackButton();
+  }
 }
 
 async function onUseItem(itemId) {
@@ -1764,7 +2217,13 @@ async function onUseItem(itemId) {
   }
   save();
   renderBattle();
-  showHealNumber(battle.dual ? slotWrap('player', slot) : $('player-sprite-wrap'), amount);
+  if (result.kind === 'heal' || result.kind === 'revive') {
+    const healAmt = result.kind === 'heal' ? result.amount : fighter.hp;
+    const wrap = battle.dual && target.index >= 0
+      ? slotWrap('player', target.index)
+      : $('player-sprite-wrap');
+    showHealNumber(wrap, healAmt);
+  }
 
   try {
     if (battle.dual) {
@@ -1797,46 +2256,47 @@ function monAcceptsItem(mon, item) {
   return false;
 }
 
-function closeBagPanels() {
-  bagSelectedItemId = null;
-  $('bag-item-panel')?.classList.add('hidden');
-  $('bag-target-panel')?.classList.add('hidden');
-}
-
-function renderBagItemList() {
-  const list = $('bag-item-list');
+function renderItemsModalList() {
+  const list = $('items-list');
   if (!list) return;
   list.innerHTML = '';
+  const inBattle = isBattleScreenActive();
   for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
-    const anyTarget = state.party.some((m) => monAcceptsItem(m, item));
+    if (owned <= 0) continue;
+    const usable = inBattle
+      ? ownedItemUsableInBattle(item)
+      : state.party.some((m) => monAcceptsItem(m, item));
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
-    row.disabled = owned <= 0 || !anyTarget;
+    row.disabled = !usable;
+    if (!usable) row.title = '现在不能使用';
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
       <span class="item-effect">${itemEffectLabel(item)}</span>
       <span class="item-owned">×${owned}</span>
     `;
-    row.addEventListener('click', () => openBagTargetPicker(item.id));
+    row.addEventListener('click', () => {
+      if (inBattle) onUseItem(item.id);
+      else openItemsTargetPicker(item.id);
+    });
     list.appendChild(row);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = '没有道具';
+    list.appendChild(empty);
   }
 }
 
-function openBagItemPanel() {
-  if (battle) return; // party bag is out-of-battle only
-  renderBagItemList();
-  $('bag-target-panel')?.classList.add('hidden');
-  $('bag-item-panel')?.classList.remove('hidden');
-}
-
-function openBagTargetPicker(itemId) {
+function openItemsTargetPicker(itemId) {
   const item = ITEMS[itemId];
   if (!item || (state.items?.[itemId] || 0) <= 0) return;
-  bagSelectedItemId = itemId;
-  const list = $('bag-target-list');
+  itemsUiSelectedId = itemId;
+  const list = $('items-target-list');
   list.innerHTML = '';
   for (const mon of state.party) {
     const btn = document.createElement('button');
@@ -1846,15 +2306,16 @@ function openBagTargetPicker(itemId) {
     btn.disabled = !ok;
     const sp = SPECIES[mon.speciesId];
     btn.textContent = `${sp?.name || mon.speciesId} Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`;
-    btn.addEventListener('click', () => onBagUseItem(mon.uid));
+    btn.addEventListener('click', () => onItemsUseOutOfBattle(mon.uid));
     list.appendChild(btn);
   }
-  $('bag-item-panel')?.classList.add('hidden');
-  $('bag-target-panel')?.classList.remove('hidden');
+  $('items-step-list').classList.add('hidden');
+  $('items-step-target').classList.remove('hidden');
+  $('items-title').textContent = '选择宝可梦';
 }
 
-function onBagUseItem(uid) {
-  const item = ITEMS[bagSelectedItemId];
+function onItemsUseOutOfBattle(uid) {
+  const item = ITEMS[itemsUiSelectedId];
   const mon = state.party.find((p) => p.uid === uid);
   if (!item || !mon || (state.items?.[item.id] || 0) <= 0) return;
   if (!monAcceptsItem(mon, item)) return;
@@ -1870,14 +2331,19 @@ function onBagUseItem(uid) {
     lines.push(`使用了 ${item.name}！`);
     for (const line of result.logs || []) lines.push(line);
   }
-  const fb = $('bag-item-feedback');
-  if (fb) {
-    fb.hidden = false;
-    fb.textContent = lines.join(' ');
-  }
+  showAppToast(lines.join(' '));
   save();
   renderParty($('party-list'), false);
-  closeBagPanels();
+  closeItemsModal();
+}
+
+function openItemsUi() {
+  if (isBattleScreenActive() && (battleBusy || continueResolver)) return;
+  $('items-title').textContent = '道具';
+  $('items-step-list').classList.remove('hidden');
+  $('items-step-target').classList.add('hidden');
+  renderItemsModalList();
+  $('items-modal').classList.remove('hidden');
 }
 
 function awardXp(foe) {
@@ -1923,6 +2389,7 @@ function sendNextFoe() {
   battle.foe = { ...sent };
   appendLog(`${pendingEncounter.trainerName} 派出了 ${SPECIES[sent.speciesId].name}！`);
   renderBattle();
+  preloadBattleFighterFrames();
   if (battle?.player) {
     playBattleBgm({
       rift: !!battle.allies,
@@ -1979,15 +2446,20 @@ function openCatchPick() {
 
 function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
+  battle = null;
+  battleBusy = false;
+  continueResolver = null;
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
   if (inSpiritHall()) {
     if (wipeMaze) failMazeRun();
     else returnAfterMazeBattle();
+    updateItemButton();
     return;
   }
   openMap(currentMapId);
+  updateItemButton();
 }
 
 function finishBattleWin(evolved) {
@@ -2253,6 +2725,11 @@ $('btn-maze-exit').addEventListener('click', () => {
 $('btn-maze-info')?.addEventListener('click', () => {
   showMazeToast(MAZE_HELP_TEXT);
 });
+$('maze-world')?.addEventListener('click', onMazeWorldClick);
+bindMazeStick();
+$('btn-party-info')?.addEventListener('click', () => {
+  showAppToast(PARTY_HELP_TEXT);
+});
 window.addEventListener('keydown', (e) => {
   if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;
   const dirs = {
@@ -2263,20 +2740,13 @@ window.addEventListener('keydown', (e) => {
   const d = dirs[e.key];
   if (!d) return;
   e.preventDefault();
+  clearMazePath();
   tryMazeStep(d[0], d[1]);
 });
-$('btn-attack').addEventListener('click', onAttack);
-$('btn-item').addEventListener('click', () => {
-  if (battleBusy || continueResolver) return;
-  if ($('item-panel').classList.contains('hidden')) openItemPanel();
-  else closeItemPanel();
-});
-$('btn-close-items').addEventListener('click', closeItemPanel);
-$('btn-party-items')?.addEventListener('click', openBagItemPanel);
-$('btn-close-bag-items')?.addEventListener('click', closeBagPanels);
-$('btn-close-bag-target')?.addEventListener('click', () => {
-  $('bag-target-panel')?.classList.add('hidden');
-  openBagItemPanel();
+$('btn-items')?.addEventListener('click', openItemsUi);
+$('btn-close-items')?.addEventListener('click', closeItemsModal);
+$('items-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('items-modal')) closeItemsModal();
 });
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
@@ -2315,10 +2785,20 @@ $('btn-battle-anim').addEventListener('click', () => {
   state.battleAnim = BATTLE_ANIM_ORDER[(idx + 1) % BATTLE_ANIM_ORDER.length];
   save();
   refreshBattleAnimButton();
+  if (isBattleScreenActive()) preloadBattleFighterFrames();
 });
 $('btn-damage-numbers').addEventListener('click', () => {
   state.damageNumbers = !(state.damageNumbers !== false);
   save();
+  refreshSettingsPanel();
+});
+$('btn-move-layout')?.addEventListener('click', () => {
+  const cur = normalizeBattleMoveLayout(state.battleMoveLayout);
+  const idx = BATTLE_MOVE_LAYOUTS.indexOf(cur);
+  state.battleMoveLayout = BATTLE_MOVE_LAYOUTS[(idx + 1) % BATTLE_MOVE_LAYOUTS.length];
+  save();
+  applyBattleMoveLayout();
+  if (battle) refreshMoveButtons();
   refreshSettingsPanel();
 });
 $('btn-music').addEventListener('click', () => {
@@ -2356,6 +2836,7 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 applyAudioSettings();
+applyBattleMoveLayout();
 save();
 showScreen('select');
 renderSelect();

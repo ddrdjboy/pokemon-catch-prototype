@@ -10,6 +10,7 @@ import {
   playHit,
   hasFighterFrames,
   loadFighterFrames,
+  preloadFighterFrames,
   clearFighterFrameCache,
   playFighterFrameStrip,
 } from '../js/battle-fx.js';
@@ -28,12 +29,14 @@ import {
   canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
+import { partyIndividualView } from '../js/party-detail.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
 import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
 import {
   generateMazeFloor,
   createMazeRun,
   stepMaze,
+  findMazePath,
   removeRoamer,
   markFloorBossDefeated,
   advanceMazeFloor,
@@ -46,6 +49,7 @@ import {
   markerClassName,
   bossAuraEllipse,
 } from '../js/boss-ui.js';
+import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
 
 let passed = 0;
 let failed = 0;
@@ -361,15 +365,17 @@ const squadPlayer = createPokemon('mega_charizard', 100);
 const squadAllies = createRiftAllies();
 const squadFoe = createPokemon('mega_rayquaza', 200, { shiny: true, boss: true });
 const kit = SPECIES.mega_rayquaza.moves;
-assert(kit.length === 4 && kit.some((move) => move.aoe) && kit.every((move) => move.power >= 45), 'rayquaza has a heavy kit');
+assert(kit.length === 3 && kit.every((move) => !move.aoe), 'rayquaza kit is three single-target moves');
+assert(kit[2].effect === 'atk' && kit[2].power === 0, 'rayquaza utility is not a damaging move');
 assert(Math.max(...kit.map((move) => move.power)) >= 140, 'signature move is much stronger');
 const firstRaidTurn = resolveSquadTurn(squadPlayer, squadAllies, squadFoe, () => 0);
 const swings = firstRaidTurn.logs.filter((line) => line.side === 'player' || line.side === 'ally');
 assert(swings.length === 4, 'player and three computers all attack');
 const foeLogs = firstRaidTurn.logs.filter((line) => line.side === 'foe');
-assert(foeLogs.some((line) => line.text.includes('龙星群')), 'opens with 龙星群');
-assert(foeLogs.filter((line) => line.text.includes('空气斩')).length >= 3, '空气斩 hits the standing squad');
-const heavy = foeLogs.find((line) => line.text.includes('龙星群'));
+assert(foeLogs.some((line) => line.text.includes('飞冲升天')), 'opens with 飞冲升天');
+assert(foeLogs.every((line) => !line.text.includes('空气斩')), '空气斩 is no longer cast');
+assert(foeLogs.every((line) => !line.text.includes('龙之舞')), 'utility move is not cast');
+const heavy = foeLogs.find((line) => line.text.includes('飞冲升天'));
 const playerHp = squadPlayer.maxHp;
 assert(heavy.damage >= playerHp * 0.8, 'heavy skill nearly KOs a level 100 mega');
 function raidToEnd(level) {
@@ -385,7 +391,14 @@ function raidToEnd(level) {
       fighter = createPokemon('mega_charizard', level);
       backups -= 1;
     }
-    const turn = resolveSquadTurn(fighter, allies, raidBoss, () => (roll++ % 4) / 4);
+    const turn = resolveSquadTurn(
+      fighter,
+      allies,
+      raidBoss,
+      () => (roll++ % 4) / 4,
+      SPECIES.mega_charizard.move,
+      SPECIES.mega_rayquaza.moves[0],
+    );
     fighter = turn.player;
     allies = turn.allies;
     raidBoss = turn.foe;
@@ -396,11 +409,11 @@ function raidToEnd(level) {
   }
   return { raidResult, rounds, bossHp: raidBoss.hp };
 }
-const fresh = raidToEnd(100);
-assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 100 squad falls before the boss');
-assert(fresh.bossHp < 1600, 'level 100 squad still cuts deep into the boss');
-const ready = raidToEnd(140);
-assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 140 squad beats rayquaza (${ready.rounds} rounds)`);
+const fresh = raidToEnd(90);
+assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 90 squad falls before the boss');
+assert(fresh.bossHp < 1600, 'level 90 squad still cuts deep into the boss');
+const ready = raidToEnd(100);
+assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 100 squad beats rayquaza (${ready.rounds} rounds)`);
 
 console.log('twin towers');
 assert(MAPS.twin_towers?.twin && MAPS.twin_towers.encounters.length === 4, 'twin towers has 4 dual fights');
@@ -480,6 +493,56 @@ const missing = await loadFighterFrames('charmander', {
 });
 assert(missing === null, 'fighter frames missing → null');
 assert(!hasFighterFrames('charmander'), 'failed load clears hasFighterFrames');
+
+console.log('fighter frame parallel + preload');
+clearFighterFrameCache();
+{
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const parallelFrames = await loadFighterFrames('parallel_mon', {
+    loader: () => new Promise((resolve) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      setTimeout(() => {
+        inFlight -= 1;
+        resolve({ src: 'ok' });
+      }, 20);
+    }),
+  });
+  assert(parallelFrames?.length === 5, 'parallel load returns 5 frames');
+  assert(maxInFlight === 5, 'loads all five frames concurrently');
+}
+clearFighterFrameCache();
+{
+  let starts = 0;
+  const shared = loadFighterFrames('inflight_mon', {
+    loader: () => new Promise((resolve) => {
+      starts += 1;
+      setTimeout(() => resolve({ src: 'ok' }), 30);
+    }),
+  });
+  const again = loadFighterFrames('inflight_mon', {
+    loader: () => new Promise((resolve) => {
+      starts += 1;
+      setTimeout(() => resolve({ src: 'ok' }), 30);
+    }),
+  });
+  await Promise.all([shared, again]);
+  assert(starts === 5, 'in-flight load is shared across callers');
+}
+clearFighterFrameCache();
+{
+  const startedSpecies = new Set();
+  await preloadFighterFrames(['alpha', 'beta', 'alpha'], {
+    loader: (url) => {
+      const species = String(url).split('/')[3];
+      startedSpecies.add(species);
+      return Promise.resolve({ src: url });
+    },
+  });
+  assert(startedSpecies.has('alpha') && startedSpecies.has('beta'), 'preload starts both species');
+  assert(hasFighterFrames('alpha') && hasFighterFrames('beta'), 'preload caches both species');
+}
 const fallback = await playHit({
   side: 'player',
   attackerSpeciesId: 'charmander',
@@ -702,6 +765,24 @@ const wallStep = (() => {
 })();
 assert(wallStep, 'cannot walk into walls');
 
+{
+  const walled = {
+    player: { x: 1, y: 1 },
+    grid: [
+      ['wall', 'wall', 'wall', 'wall', 'wall'],
+      ['wall', 'floor', 'wall', 'floor', 'wall'],
+      ['wall', 'floor', 'floor', 'floor', 'wall'],
+      ['wall', 'wall', 'wall', 'wall', 'wall'],
+    ],
+  };
+  const around = findMazePath(walled, 3, 1);
+  assert(around.length === 4, 'path goes around a wall');
+  assert(around[0].x === 1 && around[0].y === 2, 'first step leaves the wall gap');
+  assert(around[3].x === 3 && around[3].y === 1, 'path ends on the target');
+  assert(findMazePath(walled, 2, 1).length === 0, 'wall target is empty');
+  assert(findMazePath(walled, 1, 1).length === 0, 'current cell is empty');
+}
+
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].speciesId === 'eternatus' && SPIRIT_HALL_BOSS_BY_FLOOR[1].level === 225, 'floor1 boss');
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].speciesId === 'xerneas' && SPIRIT_HALL_BOSS_BY_FLOOR[2].level === 250, 'floor2 boss');
 assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].speciesId === 'zygarde' && SPIRIT_HALL_BOSS_BY_FLOOR[3].level === 300, 'floor3 boss');
@@ -731,6 +812,68 @@ console.log('spirit hall flow helpers');
 
   assert(MAPS.spirit_hall.encounters.length === 0, 'spirit hall has no marker encounters');
 }
+
+console.log('spirit hall minimap');
+{
+  const ops = [];
+  const ctx = {
+    canvas: { width: 0, height: 0 },
+    fillStyle: '',
+    clearRect(...a) { ops.push(['clear', ...a]); },
+    fillRect(...a) { ops.push(['fill', this.fillStyle, ...a]); },
+  };
+  const run = {
+    grid: [
+      ['wall', 'wall', 'wall'],
+      ['wall', 'floor', 'stairs'],
+      ['wall', 'wall', 'wall'],
+    ],
+    player: { x: 1, y: 1 },
+    stairs: { x: 2, y: 1 },
+  };
+  paintMazeMinimap(ctx, run, 90);
+  assert(ctx.canvas.width === 90 && ctx.canvas.height === 90, 'sets canvas size');
+  assert(ops.some((o) => o[0] === 'clear'), 'clears canvas');
+  assert(ops.some((o) => o[0] === 'fill' && o[1] === '#ffd54f'), 'paints stairs gold');
+  assert(ops.some((o) => o[0] === 'fill' && o[1] === '#4fc3f7'), 'paints player cyan');
+  assert(ops.filter((o) => o[0] === 'fill' && o[1] === '#2a3340').length >= 7, 'paints walls');
+  assert(paintMazeMinimap(ctx, null) === false, 'null run is no-op');
+  assert(MAZE_MINIMAP_SIZE === 104, 'default size constant');
+}
+
+console.log('\nparty individual view');
+{
+  const view = partyIndividualView({
+    speciesId: 'bulbasaur',
+    level: 5,
+    hp: 12,
+    maxHp: 20,
+    atk: 11,
+    def: 10,
+    spd: 9,
+    exp: 4,
+    shiny: true,
+  });
+  assert(view.level === 5, 'level');
+  assert(view.hpText === '12/20', 'hp text');
+  assert(view.atk === 11 && view.def === 10 && view.spd === 9, 'combat stats');
+  assert(view.expText === `4/${xpToNext(5)}`, 'exp toward next level');
+  assert(view.shiny === true && view.fainted === false, 'shiny not fainted');
+}
+{
+  const view = partyIndividualView({
+    speciesId: 'pikachu',
+    level: 8,
+    hp: 0,
+    maxHp: 30,
+    atk: 1,
+    def: 1,
+    spd: 1,
+  });
+  assert(view.expText === `0/${xpToNext(8)}`, 'missing exp counts as 0');
+  assert(view.fainted === true && view.shiny === false, 'fainted not shiny');
+}
+assert(partyIndividualView(null) === null, 'null mon');
 
 console.log('boss ui helpers');
 assert(spriteWrapClassName({}) === 'sprite-wrap', 'plain sprite wrap');

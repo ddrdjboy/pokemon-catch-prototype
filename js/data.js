@@ -1,6 +1,7 @@
 /** Game content: species, maps, balls, type chart. */
 import { GENERATED_SPECIES, GENERATED_MAPS } from './generated-content.js';
 import { REGION_SPECIES, REGION_MAPS } from './region-content.js';
+import { applyFinalMoveKits } from './final-move-kits.js';
 
 const BASE_SPECIES = {
   scorbunny: {
@@ -252,7 +253,7 @@ const BASE_SPECIES = {
   },
 };
 
-export const SPECIES = { ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES };
+export const SPECIES = applyFinalMoveKits({ ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES });
 
 /** Distinct type ids present in the dex, sorted alphabetically. */
 export function listDexTypes(species = SPECIES) {
@@ -286,7 +287,12 @@ export function getDexDetail(speciesId, species = SPECIES) {
     base: { hp: sp.base.hp, atk: sp.base.atk, def: sp.base.def, spd: sp.base.spd },
     catchRate: sp.catchRate,
     mega: !!sp.mega,
-    moves: moves.map((m) => ({ name: m.name, power: m.power, type: m.type })),
+    moves: moves.map((m) => ({
+      name: m.name,
+      power: m.power,
+      type: m.type,
+      ...(m.effect ? { effect: m.effect } : {}),
+    })),
     evolveLevel: sp.evolveLevel ?? null,
     evolvesToName: evolvesTo?.name ?? null,
   };
@@ -951,6 +957,7 @@ export function initialPlayerState() {
     hasShinyCharm: false,
     catchStyle: 'flick',
     battleAnim: 'light',
+    battleMoveLayout: 'list',
     damageNumbers: true,
     musicEnabled: true,
     sfxEnabled: true,

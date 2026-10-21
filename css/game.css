@@ -1685,6 +1685,13 @@ button.danger {
   }
 }
 
+/* Spirit hall: no drag-selection highlight while exploring */
+#screen-maze,
+#screen-maze * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .maze-panel { display: flex; flex-direction: column; gap: 0.75rem; }
 .maze-top {
   display: flex;

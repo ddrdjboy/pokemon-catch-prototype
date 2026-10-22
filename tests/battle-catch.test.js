@@ -49,7 +49,7 @@ import {
   markerClassName,
   BOSS_OUTLINE_COLOR,
   BOSS_OUTLINE_PX,
-  bossOutlineCssPx,
+  bossOutlineFilter,
   bossOutlineOffsets,
   syncBossOutlineHairline,
 } from '../js/boss-ui.js';
@@ -911,18 +911,22 @@ assert(
 );
 
 assert(BOSS_OUTLINE_COLOR === '#ff6b6b', 'outline color');
-assert(BOSS_OUTLINE_PX === 0.5, 'outline fallback is 0.5px');
-assert(bossOutlineCssPx(2) === 0.5, 'dpr 2 → 0.5 css px');
-assert(bossOutlineCssPx(3) === 1 / 3, 'dpr 3 → 1/3 css px');
+assert(BOSS_OUTLINE_PX === 1, 'outline is 1px');
+assert(
+  bossOutlineFilter() === 'drop-shadow(-1px 0 0 #ff6b6b) drop-shadow(1px 0 0 #ff6b6b) drop-shadow(0 -1px 0 #ff6b6b) drop-shadow(0 1px 0 #ff6b6b)',
+  'filter uses literal 1px drops',
+);
 const offs = bossOutlineOffsets();
 assert(offs.length === 4, '4 cardinal outline offsets');
-assert(offs.some(([x, y]) => x === -0.5 && y === 0), 'left offset');
+assert(offs.some(([x, y]) => x === -1 && y === 0), 'left offset');
 assert(!offs.some(([x, y]) => x !== 0 && y !== 0), 'no diagonal offsets');
-assert(bossOutlineOffsets(0)[0][0] === -0.5, 'zero px uses default 0.5');
+assert(bossOutlineOffsets(0)[0][0] === -1, 'zero px uses default 1');
 {
   const root = { style: { props: {}, setProperty(k, v) { this.props[k] = v; } } };
-  const px = syncBossOutlineHairline(root, 2);
-  assert(px === 0.5 && root.style.props['--boss-o'] === '0.5px', 'sync sets --boss-o');
+  const px = syncBossOutlineHairline(root);
+  assert(px === 1, 'sync returns 1px');
+  assert(root.style.props['--boss-outline'] === bossOutlineFilter(), 'sync sets --boss-outline');
+  assert(root.style.props['--boss-outline-sm'] === bossOutlineFilter(), 'sync sets --boss-outline-sm');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

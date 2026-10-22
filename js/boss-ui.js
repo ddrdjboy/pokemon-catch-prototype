@@ -1,8 +1,8 @@
 /** Class / silhouette-outline helpers for boss UI. */
 
 export const BOSS_OUTLINE_COLOR = '#ff6b6b';
-/** Logical CSS fallback; prefer syncBossOutlineHairline() → 1 device pixel. */
-export const BOSS_OUTLINE_PX = 0.5;
+/** CSS px — 1px × 4-way is visible and thinner than the old 2px × 8-way halo. */
+export const BOSS_OUTLINE_PX = 1;
 
 export function spriteWrapClassName({ shiny = false, boss = false } = {}) {
   return `sprite-wrap${shiny ? ' shiny' : ''}${boss ? ' boss' : ''}`;
@@ -26,21 +26,28 @@ export function markerClassName({
   return `marker ${kind}${shiny ? ' shiny' : ''}${boss ? ' boss' : ''}${cleared ? ' cleared' : ''}`;
 }
 
-/** CSS px for ~1 physical pixel (avoids fat rings on retina). */
-export function bossOutlineCssPx(dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1)) {
-  const ratio = Math.max(1, Number(dpr) || 1);
-  return 1 / ratio;
+/** Build a literal drop-shadow list (no calc/var) for mobile Safari compatibility. */
+export function bossOutlineFilter(px = BOSS_OUTLINE_PX, color = BOSS_OUTLINE_COLOR) {
+  const n = Number(px);
+  const p = Number.isFinite(n) && n > 0 ? n : BOSS_OUTLINE_PX;
+  return [
+    `drop-shadow(-${p}px 0 0 ${color})`,
+    `drop-shadow(${p}px 0 0 ${color})`,
+    `drop-shadow(0 -${p}px 0 ${color})`,
+    `drop-shadow(0 ${p}px 0 ${color})`,
+  ].join(' ');
 }
 
-/** Set --boss-o so drop-shadow hairline tracks devicePixelRatio. */
-export function syncBossOutlineHairline(root = (typeof document !== 'undefined' ? document.documentElement : null), dpr) {
-  if (!root?.style) return bossOutlineCssPx(dpr);
-  const px = bossOutlineCssPx(dpr);
-  root.style.setProperty('--boss-o', `${px}px`);
+/** Apply outline filter vars so CSS `var(--boss-outline)` always resolves to literals. */
+export function syncBossOutlineHairline(root = (typeof document !== 'undefined' ? document.documentElement : null), px = BOSS_OUTLINE_PX) {
+  if (!root?.style) return px;
+  const filter = bossOutlineFilter(px);
+  root.style.setProperty('--boss-outline', filter);
+  root.style.setProperty('--boss-outline-sm', filter);
   return px;
 }
 
-/** 4 cardinal offsets only — diagonals made the ring look ~2× thicker. */
+/** 4 cardinal offsets only — diagonals made the ring look thicker. */
 export function bossOutlineOffsets(px = BOSS_OUTLINE_PX) {
   const n = Number(px);
   const p = Number.isFinite(n) && n > 0 ? n : BOSS_OUTLINE_PX;
@@ -56,7 +63,7 @@ export function bossOutlineOffsets(px = BOSS_OUTLINE_PX) {
  */
 export function paintBossSpriteOutline(ctx, img, dx, dy, dw, dh, {
   color = BOSS_OUTLINE_COLOR,
-  px = bossOutlineCssPx(),
+  px = BOSS_OUTLINE_PX,
 } = {}) {
   if (!ctx || !img) return;
   const pad = Math.ceil(Math.max(1, px)) + 2;

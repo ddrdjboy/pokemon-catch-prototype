@@ -8,6 +8,25 @@
   --ok: #81c784;
   --gold: #ffd54f;
   --border: #3a5169;
+  /* Boss silhouette outline on sprite alpha (not container chrome) */
+  --boss-outline-sm:
+    drop-shadow(-1px 0 0 #ff6b6b)
+    drop-shadow(1px 0 0 #ff6b6b)
+    drop-shadow(0 -1px 0 #ff6b6b)
+    drop-shadow(0 1px 0 #ff6b6b)
+    drop-shadow(-1px -1px 0 #ff6b6b)
+    drop-shadow(1px -1px 0 #ff6b6b)
+    drop-shadow(-1px 1px 0 #ff6b6b)
+    drop-shadow(1px 1px 0 #ff6b6b);
+  --boss-outline:
+    drop-shadow(-2px 0 0 #ff6b6b)
+    drop-shadow(2px 0 0 #ff6b6b)
+    drop-shadow(0 -2px 0 #ff6b6b)
+    drop-shadow(0 2px 0 #ff6b6b)
+    drop-shadow(-2px -2px 0 #ff6b6b)
+    drop-shadow(2px -2px 0 #ff6b6b)
+    drop-shadow(-2px 2px 0 #ff6b6b)
+    drop-shadow(2px 2px 0 #ff6b6b);
 }
 
 * { box-sizing: border-box; }
@@ -382,7 +401,22 @@ body {
 }
 
 .party-card.shiny img {
-  filter: hue-rotate(160deg) saturate(1.4);
+  filter: hue-rotate(160deg) saturate(1.4) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
+}
+
+.party-card.boss .sprite-frame {
+  overflow: visible;
+}
+
+.party-card.boss img {
+  filter: var(--boss-outline-sm) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
+}
+
+.party-card.shiny.boss img {
+  filter:
+    hue-rotate(160deg) saturate(1.4)
+    var(--boss-outline-sm)
+    drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
 }
 
 .party-card > strong {
@@ -411,18 +445,6 @@ body {
 .party-card.in-battle {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(79, 195, 247, 0.35);
-}
-
-.party-card.boss {
-  box-shadow: 0 0 0 2px #ff6b6b;
-}
-
-.party-card.boss.in-battle {
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 2px #ff6b6b,
-    0 0 0 4px var(--accent),
-    0 0 10px rgba(79, 195, 247, 0.35);
 }
 
 /* Popover overlays its own card: parents scroll/clip (overflow), so "above the card" would be cut off. */
@@ -982,7 +1004,18 @@ button.danger {
 }
 
 .marker.shiny img {
-  filter: hue-rotate(160deg) saturate(1.4);
+  filter: hue-rotate(160deg) saturate(1.4) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4));
+}
+
+.marker.boss img {
+  filter: var(--boss-outline-sm) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4));
+}
+
+.marker.shiny.boss img {
+  filter:
+    hue-rotate(160deg) saturate(1.4)
+    var(--boss-outline-sm)
+    drop-shadow(0 2px 0 rgba(0, 0, 0, 0.4));
 }
 
 .marker .label {
@@ -1044,13 +1077,6 @@ button.danger {
 .party-card.selected {
   outline: 2px solid var(--accent);
   box-shadow: 0 0 0 2px rgba(90, 180, 255, 0.35);
-}
-
-.party-card.boss.selected {
-  outline: 2px solid var(--accent);
-  box-shadow:
-    0 0 0 2px #ff6b6b,
-    0 0 0 4px rgba(90, 180, 255, 0.35);
 }
 
 .ally-row {
@@ -1145,14 +1171,12 @@ button.danger {
   filter: hue-rotate(160deg) saturate(1.45);
 }
 
-.sprite-wrap.boss {
-  outline: 2px solid #ff6b6b;
-  outline-offset: 1px;
+.sprite-wrap.boss img {
+  filter: var(--boss-outline);
 }
 
-.marker.boss {
-  outline: 2px solid #ff6b6b;
-  outline-offset: 1px;
+.sprite-wrap.shiny.boss img {
+  filter: hue-rotate(160deg) saturate(1.45) var(--boss-outline);
 }
 
 /* Battle FX POC */
@@ -1843,10 +1867,7 @@ button.danger {
 .maze-entity.roamer { z-index: 3; }
 .maze-entity.boss {
   z-index: 3;
-  outline: 2px solid #ff6b6b;
-  outline-offset: 1px;
-  border-radius: 6px;
-  background: rgba(60, 10, 20, 0.4);
+  filter: var(--boss-outline-sm);
 }
 .maze-crosshair {
   position: absolute;

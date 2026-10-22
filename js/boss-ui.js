@@ -1,4 +1,6 @@
-/** Class / geometry helpers for boss red-outline UI (see design spec). */
+/** Class / silhouette-outline helpers for boss UI. */
+
+export const BOSS_OUTLINE_COLOR = '#ff6b6b';
 
 export function spriteWrapClassName({ shiny = false, boss = false } = {}) {
   return `sprite-wrap${shiny ? ' shiny' : ''}${boss ? ' boss' : ''}`;
@@ -22,14 +24,46 @@ export function markerClassName({
   return `marker ${kind}${shiny ? ' shiny' : ''}${boss ? ' boss' : ''}${cleared ? ' cleared' : ''}`;
 }
 
-/** Ellipse stroke params for catch-canvas boss aura (container-style, not eyes). */
-export function bossAuraEllipse({ x, y, size }) {
-  return {
-    cx: x,
-    cy: y,
-    rx: size * 0.55,
-    ry: size * 0.48,
-    color: '#ff6b6b',
-    lineWidth: 2,
-  };
+/** 8-neighborhood pixel offsets for silhouette outline. */
+export function bossOutlineOffsets(px = 2) {
+  const n = Number(px);
+  const p = Math.max(1, Math.round(Number.isFinite(n) ? n : 2));
+  return [
+    [-p, 0], [p, 0], [0, -p], [0, p],
+    [-p, -p], [p, -p], [-p, p], [p, p],
+  ];
+}
+
+/**
+ * Paint a solid-color silhouette of `img` behind the eventual sprite draw.
+ * Uses an offscreen canvas + source-in fill so the outline stays pure red
+ * even when the main sprite is hue-shifted for shiny.
+ */
+export function paintBossSpriteOutline(ctx, img, dx, dy, dw, dh, {
+  color = BOSS_OUTLINE_COLOR,
+  px = 2,
+} = {}) {
+  if (!ctx || !img) return;
+  const pad = Math.max(2, px) + 2;
+  const tw = Math.ceil(dw) + pad * 2;
+  const th = Math.ceil(dh) + pad * 2;
+  if (!paintBossSpriteOutline._c) {
+    paintBossSpriteOutline._c = document.createElement('canvas');
+  }
+  const t = paintBossSpriteOutline._c;
+  if (t.width !== tw || t.height !== th) {
+    t.width = tw;
+    t.height = th;
+  }
+  const tctx = t.getContext('2d');
+  tctx.clearRect(0, 0, tw, th);
+  tctx.globalCompositeOperation = 'source-over';
+  tctx.drawImage(img, pad, pad, dw, dh);
+  tctx.globalCompositeOperation = 'source-in';
+  tctx.fillStyle = color;
+  tctx.fillRect(0, 0, tw, th);
+  tctx.globalCompositeOperation = 'source-over';
+  for (const [ox, oy] of bossOutlineOffsets(px)) {
+    ctx.drawImage(t, dx - pad + ox, dy - pad + oy);
+  }
 }

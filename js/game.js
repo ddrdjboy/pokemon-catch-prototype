@@ -91,6 +91,7 @@ import {
   spriteWrapClassName,
   partyCardClassName,
   markerClassName,
+  syncBossOutlineHairline,
 } from './boss-ui.js';
 import { partyIndividualView } from './party-detail.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from './maze-minimap.js';
@@ -3154,6 +3155,9 @@ document.addEventListener('pointerdown', () => {
 // Prevent accidental page zoom (double-tap / iOS gesture)
 document.addEventListener('dblclick', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+syncBossOutlineHairline();
+window.addEventListener('resize', () => syncBossOutlineHairline());
 
 applyAudioSettings();
 applyBattleMoveLayout();

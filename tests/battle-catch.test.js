@@ -49,7 +49,9 @@ import {
   markerClassName,
   BOSS_OUTLINE_COLOR,
   BOSS_OUTLINE_PX,
+  bossOutlineCssPx,
   bossOutlineOffsets,
+  syncBossOutlineHairline,
 } from '../js/boss-ui.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
 
@@ -909,12 +911,19 @@ assert(
 );
 
 assert(BOSS_OUTLINE_COLOR === '#ff6b6b', 'outline color');
-assert(BOSS_OUTLINE_PX === 0.5, 'outline thickness is 0.5px');
+assert(BOSS_OUTLINE_PX === 0.5, 'outline fallback is 0.5px');
+assert(bossOutlineCssPx(2) === 0.5, 'dpr 2 → 0.5 css px');
+assert(bossOutlineCssPx(3) === 1 / 3, 'dpr 3 → 1/3 css px');
 const offs = bossOutlineOffsets();
-assert(offs.length === 8, '8 outline offsets');
+assert(offs.length === 4, '4 cardinal outline offsets');
 assert(offs.some(([x, y]) => x === -0.5 && y === 0), 'left offset');
-assert(offs.some(([x, y]) => x === 0.5 && y === 0.5), 'diagonal offset');
+assert(!offs.some(([x, y]) => x !== 0 && y !== 0), 'no diagonal offsets');
 assert(bossOutlineOffsets(0)[0][0] === -0.5, 'zero px uses default 0.5');
+{
+  const root = { style: { props: {}, setProperty(k, v) { this.props[k] = v; } } };
+  const px = syncBossOutlineHairline(root, 2);
+  assert(px === 0.5 && root.style.props['--boss-o'] === '0.5px', 'sync sets --boss-o');
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

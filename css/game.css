@@ -8,16 +8,16 @@
   --ok: #81c784;
   --gold: #ffd54f;
   --border: #3a5169;
-  /* Boss silhouette outline on sprite alpha (0.5px hairline) */
+  /*
+   * Boss silhouette hairline: 4 cardinal drops only (8-way looked thick).
+   * --boss-o defaults to 0.5px; JS sets it to ~1 device pixel (1/dpr).
+   */
+  --boss-o: 0.5px;
   --boss-outline:
-    drop-shadow(-0.5px 0 0 #ff6b6b)
-    drop-shadow(0.5px 0 0 #ff6b6b)
-    drop-shadow(0 -0.5px 0 #ff6b6b)
-    drop-shadow(0 0.5px 0 #ff6b6b)
-    drop-shadow(-0.5px -0.5px 0 #ff6b6b)
-    drop-shadow(0.5px -0.5px 0 #ff6b6b)
-    drop-shadow(-0.5px 0.5px 0 #ff6b6b)
-    drop-shadow(0.5px 0.5px 0 #ff6b6b);
+    drop-shadow(calc(-1 * var(--boss-o)) 0 0 #ff6b6b)
+    drop-shadow(var(--boss-o) 0 0 #ff6b6b)
+    drop-shadow(0 calc(-1 * var(--boss-o)) 0 #ff6b6b)
+    drop-shadow(0 var(--boss-o) 0 #ff6b6b);
   --boss-outline-sm: var(--boss-outline);
 }
 

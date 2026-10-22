@@ -294,8 +294,7 @@ export function createCatchController(canvas, {
       const dx = target.x - size / 2;
       const dy = target.y - size / 2;
       if (targetPokemon.boss && scale > 0.6) {
-        const px = Math.max(2, Math.round(2 * scale));
-        paintBossSpriteOutline(ctx, spriteImg, dx, dy, size, size, { px });
+        paintBossSpriteOutline(ctx, spriteImg, dx, dy, size, size);
       }
       ctx.save();
       if (targetPokemon.shiny) ctx.filter = 'hue-rotate(160deg) saturate(1.4)';

@@ -1,6 +1,7 @@
 /** Class / silhouette-outline helpers for boss UI. */
 
 export const BOSS_OUTLINE_COLOR = '#ff6b6b';
+export const BOSS_OUTLINE_PX = 0.5;
 
 export function spriteWrapClassName({ shiny = false, boss = false } = {}) {
   return `sprite-wrap${shiny ? ' shiny' : ''}${boss ? ' boss' : ''}`;
@@ -24,10 +25,10 @@ export function markerClassName({
   return `marker ${kind}${shiny ? ' shiny' : ''}${boss ? ' boss' : ''}${cleared ? ' cleared' : ''}`;
 }
 
-/** 8-neighborhood pixel offsets for silhouette outline. */
-export function bossOutlineOffsets(px = 2) {
+/** 8-neighborhood offsets for silhouette outline (supports sub-pixel, e.g. 0.5). */
+export function bossOutlineOffsets(px = BOSS_OUTLINE_PX) {
   const n = Number(px);
-  const p = Math.max(1, Math.round(Number.isFinite(n) ? n : 2));
+  const p = Number.isFinite(n) && n > 0 ? n : BOSS_OUTLINE_PX;
   return [
     [-p, 0], [p, 0], [0, -p], [0, p],
     [-p, -p], [p, -p], [-p, p], [p, p],
@@ -41,10 +42,10 @@ export function bossOutlineOffsets(px = 2) {
  */
 export function paintBossSpriteOutline(ctx, img, dx, dy, dw, dh, {
   color = BOSS_OUTLINE_COLOR,
-  px = 2,
+  px = BOSS_OUTLINE_PX,
 } = {}) {
   if (!ctx || !img) return;
-  const pad = Math.max(2, px) + 2;
+  const pad = Math.ceil(Math.max(BOSS_OUTLINE_PX, px)) + 2;
   const tw = Math.ceil(dw) + pad * 2;
   const th = Math.ceil(dh) + pad * 2;
   if (!paintBossSpriteOutline._c) {

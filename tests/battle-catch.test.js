@@ -47,7 +47,8 @@ import {
   spriteWrapClassName,
   partyCardClassName,
   markerClassName,
-  bossAuraEllipse,
+  BOSS_OUTLINE_COLOR,
+  bossOutlineOffsets,
 } from '../js/boss-ui.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
 
@@ -906,10 +907,12 @@ assert(
   'shiny boss cleared trainer marker',
 );
 
-const aura = bossAuraEllipse({ x: 100, y: 80, size: 112 });
-assert(aura.cx === 100 && aura.cy === 80, 'aura center');
-assert(aura.rx === 112 * 0.55 && aura.ry === 112 * 0.48, 'aura radii');
-assert(aura.color === '#ff6b6b' && aura.lineWidth === 2, 'aura stroke style');
+assert(BOSS_OUTLINE_COLOR === '#ff6b6b', 'outline color');
+const offs = bossOutlineOffsets(2);
+assert(offs.length === 8, '8 outline offsets');
+assert(offs.some(([x, y]) => x === -2 && y === 0), 'left offset');
+assert(offs.some(([x, y]) => x === 2 && y === 2), 'diagonal offset');
+assert(bossOutlineOffsets(0).every(([x, y]) => Math.abs(x) <= 1 && Math.abs(y) <= 1), 'min px is 1');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

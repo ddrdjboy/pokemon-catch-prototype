@@ -9,15 +9,15 @@
   --gold: #ffd54f;
   --border: #3a5169;
   /*
-   * Boss silhouette hairline: 4 cardinal drops only (8-way looked thick).
-   * --boss-o defaults to 0.5px; JS sets it to ~1 device pixel (1/dpr).
+   * Boss silhouette: 4 cardinal 1px drops (literal values — calc/var inside
+   * drop-shadow breaks on some mobile browsers and the whole filter vanishes).
+   * JS syncBossOutlineHairline() rewrites these to the same literals at boot.
    */
-  --boss-o: 0.5px;
   --boss-outline:
-    drop-shadow(calc(-1 * var(--boss-o)) 0 0 #ff6b6b)
-    drop-shadow(var(--boss-o) 0 0 #ff6b6b)
-    drop-shadow(0 calc(-1 * var(--boss-o)) 0 #ff6b6b)
-    drop-shadow(0 var(--boss-o) 0 #ff6b6b);
+    drop-shadow(-1px 0 0 #ff6b6b)
+    drop-shadow(1px 0 0 #ff6b6b)
+    drop-shadow(0 -1px 0 #ff6b6b)
+    drop-shadow(0 1px 0 #ff6b6b);
   --boss-outline-sm: var(--boss-outline);
 }
 

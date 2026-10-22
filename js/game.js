@@ -6,9 +6,6 @@ import {
   RIFT_FRUIT,
   RIFT_FRUIT_COST,
   RIFT_UNLOCK_LEVEL,
-  HEAL_ITEMS,
-  emptyHealItems,
-  applyHealItem,
   TWIN_KEY,
   TWIN_KEY_COST,
   TWIN_UNLOCK_LEVEL,
@@ -35,7 +32,22 @@ import {
   listDexEntries,
   listDexTypes,
   getDexDetail,
+  canEnterSpiritHall,
 } from './data.js';
+import { castMoveNames } from './final-move-kits.js';
+import {
+  withBattleState,
+  speciesMoveList,
+  chooseFoeMove,
+  moveTarget,
+  chooseDualFoeCmd,
+} from './battle-moves.js';
+import {
+  ITEMS,
+  emptyItems,
+  applyItem,
+  itemEffectLabel,
+} from './items.js';
 import {
   nextBattleStep,
   resolveDualTurn,
@@ -46,21 +58,69 @@ import {
   resolveFoeOnlyTurn,
 } from './battle.js';
 import {
-  withBattleState,
-  speciesMoveList,
-  moveTarget,
-  chooseDualFoeCmd,
-} from './battle-moves.js';
-import { hasFighterFrames, normalizeBattleAnim, playFighterFrameStrip, playHit } from './battle-fx.js';
-import { unlockAudio, playExploreBgm, playBattleBgm, playAttackSfx } from './audio.js';
+  hasFighterFrames,
+  normalizeBattleAnim,
+  playDamageNumber,
+  playFighterFrameStrip,
+  playHit,
+  preloadFighterFrames,
+} from './battle-fx.js';
+import {
+  unlockAudio,
+  playExploreBgm,
+  playBattleBgm,
+  playAttackSfx,
+  playCatchSuccessSfx,
+  setMusicEnabled,
+  setSfxEnabled,
+} from './audio.js';
 import { catchChance, catchOutlook, catchProbability, createCatchController } from './catch.js';
 import { gainExperience, xpReward, tryEvolve } from './level.js';
+import {
+  createMazeRun,
+  stepMaze,
+  findMazePath,
+  removeRoamer,
+  markFloorBossDefeated,
+  advanceMazeFloor,
+  buildRoamerEncounter,
+  buildFloorBossEncounter,
+  SPIRIT_HALL_BOSS_BY_FLOOR,
+} from './maze.js';
+import {
+  spriteWrapClassName,
+  partyCardClassName,
+  markerClassName,
+} from './boss-ui.js';
+import { partyIndividualView } from './party-detail.js';
+import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from './maze-minimap.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
-const ASSET_VER = 'v2pixel192e-8bit-all';
+const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
 const spriteUrl = (path) => `${path}?${ASSET_VER}`;
 
+/** Pixel size of one maze cell; keep in sync with CSS `--maze-tile`. */
+const MAZE_TILE = 56;
+/** Visible tiles around the centered player (odd). */
+const MAZE_VIEW_W = 11;
+const MAZE_VIEW_H = 9;
+
 const BATTLE_ANIM_ORDER = ['off', 'light', 'medium', 'heavy'];
+const BATTLE_MOVE_LAYOUTS = ['list', 'grid', 'primary'];
+const BATTLE_MOVE_LAYOUT_LABEL = { list: '列表', grid: '棋盘', primary: '主招' };
+
+function normalizeBattleMoveLayout(value) {
+  return BATTLE_MOVE_LAYOUTS.includes(value) ? value : 'list';
+}
+
+function applyBattleMoveLayout() {
+  const layout = normalizeBattleMoveLayout(state.battleMoveLayout);
+  state.battleMoveLayout = layout;
+  const bar = $('battle-actions');
+  if (bar) bar.dataset.layout = layout;
+  const btn = $('btn-move-layout');
+  if (btn) btn.textContent = BATTLE_MOVE_LAYOUT_LABEL[layout];
+}
 const BATTLE_ANIM_LABEL = {
   off: '关闭',
   light: '轻量',
@@ -73,6 +133,7 @@ const $ = (id) => document.getElementById(id);
 const screens = {
   select: $('screen-select'),
   map: $('screen-map'),
+  maze: $('screen-maze'),
   pick: $('screen-pick'),
   battle: $('screen-battle'),
   catch: $('screen-catch'),
@@ -93,9 +154,17 @@ let battleBusy = false;
 let continueResolver = null;
 let dualCmdPhase = null; // null | 'action' | 'target' | 'switch'
 let dualCmdSlot = 0;
-let dualCmds = []; // length 2
+let dualCmds = [null, null];
 let dualSwitchBackup = [null, null];
 let pendingMove = null;
+let itemsUiSelectedId = null;
+let mazeRun = null;
+let mazePath = [];
+let mazeDest = null;
+let mazeWalkTimer = null;
+let mazeStickDir = null;
+let mazeStickTimer = null;
+let mazeStickPointer = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -110,54 +179,201 @@ function attackLabel() {
   return '攻击';
 }
 
-function healTargetsOnField() {
+function ensureBattleStateOnField() {
+  if (!battle) return;
+  if (battle.dual) {
+    battle.players = battle.players.map((mon) => withBattleState(mon));
+    battle.foes = battle.foes.map((mon) => withBattleState(mon));
+    battle.player = battle.players[0];
+    battle.foe = battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+  } else {
+    battle.player = withBattleState(battle.player);
+    battle.foe = withBattleState(battle.foe);
+    if (battle.allies) battle.allies = battle.allies.map((ally) => withBattleState(ally));
+  }
+}
+
+function setMoveButtonsBusy(busy) {
+  const root = $('move-buttons');
+  if (!root) return;
+  for (const btn of root.querySelectorAll('button')) {
+    btn.disabled = busy || btn.dataset.locked === '1';
+  }
+}
+
+function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) {
+  const root = $('move-buttons');
+  const prompt = $('move-prompt');
+  if (!root) return;
+  root.innerHTML = '';
+  if (continueMode) {
+    if (prompt) prompt.classList.add('hidden');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'primary';
+    btn.textContent = '继续';
+    btn.addEventListener('click', () => {
+      if (continueResolver) continueResolver();
+    });
+    root.appendChild(btn);
+    return;
+  }
+  if (!mon) {
+    if (prompt) prompt.classList.add('hidden');
+    return;
+  }
+  if (battle?.dual && dualSlot != null && prompt) {
+    prompt.textContent = `请为 ${SPECIES[mon.speciesId].name} 选择技能`;
+    prompt.classList.remove('hidden');
+  } else if (prompt) {
+    prompt.classList.add('hidden');
+  }
+  for (const move of speciesMoveList(SPECIES[mon.speciesId])) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'primary move-btn';
+    const name = document.createElement('span');
+    name.className = 'move-btn-name';
+    name.textContent = move.name;
+    const tags = document.createElement('span');
+    tags.className = 'move-btn-tags tags';
+    if (move.effect) {
+      const effectTag = document.createElement('span');
+      effectTag.className = 'tag effect';
+      effectTag.textContent = { heal: '回复', atk: '加攻', def: '加防' }[move.effect];
+      tags.appendChild(effectTag);
+      if (mon.usedUtility) {
+        btn.disabled = true;
+        btn.dataset.locked = '1';
+      }
+    } else {
+      const typeTag = document.createElement('span');
+      typeTag.className = typeTagClass(move.type);
+      typeTag.textContent = typeLabel(move.type);
+      const powerTag = document.createElement('span');
+      powerTag.className = 'tag power';
+      powerTag.textContent = `威力 ${move.power}`;
+      tags.appendChild(typeTag);
+      tags.appendChild(powerTag);
+    }
+    btn.appendChild(name);
+    btn.appendChild(tags);
+    btn.addEventListener('click', () => onPickMove(move, dualSlot));
+    root.appendChild(btn);
+  }
+}
+
+function refreshMoveButtons() {
+  applyBattleMoveLayout();
+  if (!battle) {
+    renderMoveButtons(null);
+    return;
+  }
+  if (battle.dual) {
+    if (dualCmdPhase === 'action' && battle.players[dualCmdSlot]) {
+      renderDualMoveButtons(battle.players[dualCmdSlot]);
+    }
+    return;
+  }
+  ensureBattleStateOnField();
+  renderMoveButtons(battle.player);
+}
+
+function onFieldMons() {
   if (!battle) return [];
-  const mons = battle.dual ? (battle.players || []) : [battle.player];
-  return mons
+  return battle.dual ? (battle.players || []) : [battle.player];
+}
+
+function healTargetsOnField() {
+  return onFieldMons()
     .map((mon, index) => ({ mon, index }))
     .filter(({ mon }) => mon && mon.hp > 0 && mon.hp < mon.maxHp);
 }
 
-function canUseHealItem() {
-  if (!battle || battleBusy || continueResolver) return false;
-  if (!healTargetsOnField().length) return false;
-  return Object.keys(HEAL_ITEMS).some((id) => (state.items?.[id] || 0) > 0);
+function xpTargetsOnField() {
+  return onFieldMons()
+    .map((mon, index) => ({ mon, index }))
+    .filter(({ mon }) => mon && mon.hp > 0);
+}
+
+function reviveTargets() {
+  if (!battle) return [];
+  const field = onFieldMons()
+    .map((mon, index) => ({ mon, index, uid: battle.dual ? battle.playerUids[index] : battle.playerUid, onField: true }))
+    .filter(({ mon }) => mon && mon.hp <= 0);
+  if (field.length) return field;
+  const onFieldUids = new Set(
+    battle.dual ? (battle.playerUids || []) : [battle.playerUid],
+  );
+  return activeParty(state.party)
+    .filter((p) => p.hp <= 0 && !onFieldUids.has(p.uid))
+    .map((mon) => ({ mon, index: -1, uid: mon.uid, onField: false }));
+}
+
+function autoTargetForItem(item) {
+  if (item.effect === 'heal') {
+    const targets = healTargetsOnField();
+    if (!targets.length) return null;
+    targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
+    const t = targets[targets.length - 1];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'xp') {
+    const targets = xpTargetsOnField();
+    if (!targets.length) return null;
+    const t = targets[0];
+    const uid = battle.dual ? battle.playerUids[t.index] : battle.playerUid;
+    return { ...t, uid, onField: true };
+  }
+  if (item.effect === 'revive') {
+    const targets = reviveTargets();
+    return targets[0] || null;
+  }
+  return null;
+}
+
+function ownedItemUsableInBattle(item) {
+  return (state.items?.[item.id] || 0) > 0 && !!autoTargetForItem(item);
+}
+
+function isBattleScreenActive() {
+  return !!battle && !screens.battle.classList.contains('hidden');
 }
 
 function updateItemButton() {
-  const btn = $('btn-item');
+  const btn = $('btn-items');
   if (!btn) return;
-  btn.disabled = !canUseHealItem();
+  btn.disabled = false;
+}
+
+function closeItemsModal() {
+  itemsUiSelectedId = null;
+  $('items-modal')?.classList.add('hidden');
+  $('items-step-list')?.classList.remove('hidden');
+  $('items-step-target')?.classList.add('hidden');
+  const title = $('items-title');
+  if (title) title.textContent = '道具';
 }
 
 function closeItemPanel() {
-  $('item-panel')?.classList.add('hidden');
+  closeItemsModal();
 }
 
 function setBattleActionBusy(busy) {
-  $('btn-attack').disabled = busy;
+  setMoveButtonsBusy(busy);
   $('btn-flee-battle').disabled = busy;
-  document.querySelectorAll('#move-buttons button').forEach((el) => {
-    if (busy) el.disabled = true;
-    else if (!el.dataset.locked) el.disabled = false;
-  });
-  for (const id of ['btn-switch-cmd', 'btn-cmd-back', 'btn-cmd-undo']) {
+  for (const id of ['btn-switch-cmd', 'btn-cmd-back', 'btn-cmd-undo', 'btn-attack']) {
     const el = $(id);
     if (el) el.disabled = busy;
   }
-  if (busy) {
-    $('btn-item').disabled = true;
-    closeItemPanel();
-  } else {
-    updateItemButton();
-  }
+  if (busy) closeItemPanel();
+  updateItemButton();
 }
 
 function resetAttackButton() {
-  const btn = $('btn-attack');
-  btn.textContent = attackLabel();
-  btn.disabled = false;
-  $('btn-flee-battle').disabled = false;
+  const flee = $('btn-flee-battle');
+  if (flee) flee.disabled = false;
   battleBusy = false;
   continueResolver = null;
   updateItemButton();
@@ -170,36 +386,51 @@ function resetAttackButton() {
   pendingMove = null;
   setDualCmdChrome({
     hint: '',
-    showMoves: false,
+    showMoves: true,
     showSwitch: false,
     showBack: false,
     showUndo: false,
-    hideAttack: false,
+    hideAttack: true,
   });
   clearTargetHighlight();
   markReadySlots();
+  refreshMoveButtons();
 }
 
 function waitForContinue(message) {
   appendLog(message);
   return new Promise((resolve) => {
-    const btn = $('btn-attack');
-    btn.textContent = '继续';
-    btn.disabled = false;
-    btn.classList.remove('hidden');
-    $('move-buttons')?.classList.add('hidden');
-    $('btn-switch-cmd')?.classList.add('hidden');
-    $('btn-cmd-back')?.classList.add('hidden');
-    $('btn-cmd-undo')?.classList.add('hidden');
-    $('btn-item').disabled = true;
     closeItemPanel();
+    if (battle?.dual) {
+      const btn = $('btn-attack');
+      if (btn) {
+        btn.textContent = '继续';
+        btn.disabled = false;
+        btn.classList.remove('hidden');
+      }
+      $('move-buttons')?.classList.add('hidden');
+      $('btn-switch-cmd')?.classList.add('hidden');
+      $('btn-cmd-back')?.classList.add('hidden');
+      $('btn-cmd-undo')?.classList.add('hidden');
+      $('battle-cmd-hint')?.classList.add('hidden');
+      continueResolver = () => {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = attackLabel();
+          btn.classList.add('hidden');
+        }
+        continueResolver = null;
+        resolve();
+      };
+      return;
+    }
+    renderMoveButtons(null, { continueMode: true });
     continueResolver = () => {
-      btn.disabled = true;
-      btn.textContent = attackLabel();
-      if (battle?.dual) btn.classList.add('hidden');
       continueResolver = null;
+      refreshMoveButtons();
       resolve();
     };
+    updateItemButton();
   });
 }
 
@@ -243,11 +474,13 @@ function markReadySlots() {
 
 function renderDualMoveButtons(mon) {
   const box = $('move-buttons');
+  if (!box || !mon) return;
   box.innerHTML = '';
   const kit = speciesMoveList(SPECIES[mon.speciesId]);
   for (const move of kit) {
     const btn = document.createElement('button');
     btn.type = 'button';
+    btn.className = 'primary move-btn';
     const kind = moveTarget(move);
     if (move.effect) {
       btn.textContent = `${move.name} · ${move.effect === 'heal' ? '回复' : move.effect === 'atk' ? '加攻' : '加防'}`;
@@ -450,19 +683,24 @@ function hydrateState(parsed) {
     ...base,
     ...parsed,
     balls: { ...base.balls, ...(parsed.balls || {}) },
-    items: { ...emptyHealItems(), ...(parsed.items || {}) },
+    items: { ...emptyItems(), ...(parsed.items || {}) },
     party: trimParty((parsed.party || base.party).map((p) => ({ ...p }))),
     cleared: { ...(parsed.cleared || {}) },
     encounters: { ...(parsed.encounters || {}) },
   };
-  for (const id of Object.keys(HEAL_ITEMS)) {
+  for (const id of Object.keys(ITEMS)) {
     s.items[id] = Math.max(0, Math.floor(Number(s.items[id]) || 0));
   }
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
+  s.twinCleared = !!s.twinCleared;
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
+  s.battleMoveLayout = normalizeBattleMoveLayout(s.battleMoveLayout);
+  s.damageNumbers = s.damageNumbers !== false;
+  s.musicEnabled = s.musicEnabled !== false;
+  s.sfxEnabled = s.sfxEnabled !== false;
   if (s.balls.dusk) {
     s.balls.ultra = (s.balls.ultra || 0) + s.balls.dusk;
     delete s.balls.dusk;
@@ -503,15 +741,41 @@ function showScreen(name) {
   for (const [key, el] of Object.entries(screens)) {
     el.classList.toggle('hidden', key !== name);
   }
+  updateItemButton();
 }
 
 function refreshHeader() {
-  $('coin-display').textContent = `金币 ${state.coins}`;
-  $('fruit-display').textContent = `异次元果 ${state.riftFruit || 0}`;
+  $('coin-display').innerHTML = `<span class="coin-icon" aria-hidden="true"></span>${state.coins}`;
+  $('fruit-display').textContent = `🍇 ${state.riftFruit || 0}`;
   const twinEl = $('twin-key-display');
-  if (twinEl) twinEl.textContent = `双子钥匙 ${state.twinKeys || 0}`;
+  if (twinEl) twinEl.textContent = `🔑 ${state.twinKeys || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
+}
+
+function applyAudioSettings() {
+  setMusicEnabled(state.musicEnabled !== false);
+  setSfxEnabled(state.sfxEnabled !== false);
+}
+
+function openSettings() {
+  refreshSettingsPanel();
+  $('settings-modal').classList.remove('hidden');
+}
+
+function closeSettings() {
+  $('settings-modal').classList.add('hidden');
+}
+
+function refreshSettingsPanel() {
   refreshBattleAnimButton();
+  renderCatchStyle();
+  applyBattleMoveLayout();
+  const musicBtn = $('btn-music');
+  const sfxBtn = $('btn-sfx');
+  const numBtn = $('btn-damage-numbers');
+  if (musicBtn) musicBtn.textContent = state.musicEnabled !== false ? '开' : '关';
+  if (sfxBtn) sfxBtn.textContent = state.sfxEnabled !== false ? '开' : '关';
+  if (numBtn) numBtn.textContent = state.damageNumbers !== false ? '开' : '关';
 }
 
 function renderSelect() {
@@ -522,20 +786,26 @@ function renderSelect() {
   for (const map of Object.values(MAPS)) {
     const enc = state.encounters[map.id] || [];
     const remaining = enc.filter((e) => !state.cleared[`${map.id}:${e.id}`]).length;
-    const levels = enc.flatMap((e) => encounterLevels(e));
-    const lvMin = Math.min(...levels);
-    const lvMax = Math.max(...levels);
+    const spiritLocked = map.spiritHall && !state.twinCleared;
     const twinLocked = map.twin
       && partyOverLevelCount(state.party, TWIN_UNLOCK_LEVEL) < TWIN_UNLOCK_COUNT;
-    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked;
+    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked || spiritLocked;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${locked ? ' locked' : ''}`;
-    const meta = map.rift
-      ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
-      : map.twin
-        ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
-        : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${map.spiritHall ? ' spirit' : ''}${locked ? ' locked' : ''}`;
+    let meta;
+    if (map.spiritHall) {
+      meta = state.twinCleared ? '三层迷宫 · 已解锁' : '三层迷宫 · 需通关双子塔';
+    } else {
+      const levels = enc.flatMap((e) => encounterLevels(e));
+      const lvMin = Math.min(...levels);
+      const lvMax = Math.max(...levels);
+      meta = map.rift
+        ? `小队挑战 Lv.${lvMin} · 异次元果 ${state.riftFruit || 0}/${RIFT_FRUIT_COST}`
+        : map.twin
+          ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
+          : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
+    }
     card.innerHTML = `
       <img src="${spriteUrl(map.image)}" alt="${map.name}" />
       <div class="meta">
@@ -571,19 +841,18 @@ function renderShop() {
       },
     }));
   }
-  for (const item of Object.values(HEAL_ITEMS)) {
-    const healLabel = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
+  for (const item of Object.values(ITEMS)) {
     shop.appendChild(shopItem({
       title: item.name,
       icon: item.icon,
       price: item.price,
       owned: state.items?.[item.id] || 0,
       disabled: state.coins < item.price,
-      label: healLabel,
+      label: itemEffectLabel(item),
       onBuy: () => {
         if (state.coins < item.price) return;
         state.coins -= item.price;
-        if (!state.items) state.items = emptyHealItems();
+        if (!state.items) state.items = emptyItems();
         state.items[item.id] = (state.items[item.id] || 0) + 1;
         afterPurchase();
       },
@@ -681,31 +950,49 @@ function renderDex() {
     row.innerHTML = `
       <img src="${spriteUrl(e.sprite)}" alt="${e.name}" />
       <span class="name">${e.name}</span>
-      <span class="tag type">${typeLabel(e.type)}</span>
+      <span class="${typeTagClass(e.type)}">${typeLabel(e.type)}</span>
     `;
     row.addEventListener('click', () => openDexDetail(e.id));
     list.appendChild(row);
   }
 }
 
-function renderDexDetail(detail) {
+function renderDexDetail(detail, mon = null) {
   const root = $('dex-detail');
   const catchPct = Math.round((detail.catchRate ?? 0) * 100);
+  const effectLabel = { heal: '回复', atk: '加攻', def: '加防' };
   const moveLines = detail.moves
-    .map((m) => `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`)
+    .map((m) => (
+      m.effect
+        ? `<li>${m.name}（${effectLabel[m.effect]}）</li>`
+        : `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`
+    ))
     .join('');
   const evo = detail.evolvesToName
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`
     : '进化：无';
   const canAnim = hasFighterFrames(detail.id);
+  const individual = partyIndividualView(mon);
+  const individualHtml = individual
+    ? `<div class="individual">
+        <div>个体：Lv.${individual.level} · HP ${individual.hpText}</div>
+        <div>能力：攻 ${individual.atk} · 防 ${individual.def} · 速 ${individual.spd}</div>
+        <div>经验：${individual.expText}</div>
+        <div class="meta">
+          ${individual.shiny ? '<span class="tag shiny">闪光</span>' : ''}
+          ${individual.fainted ? '<span class="tag">倒地</span>' : ''}
+        </div>
+      </div>`
+    : '';
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
     <div class="dex-hero-wrap">
       <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
     </div>
     ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
+    ${individualHtml}
     <div class="meta">
-      <span class="tag type">${typeLabel(detail.type)}</span>
+      <span class="${typeTagClass(detail.type)}">${typeLabel(detail.type)}</span>
       ${detail.mega ? '<span class="tag mega">超级</span>' : ''}
     </div>
     <div class="stats">种族值：HP ${detail.base.hp} · 攻 ${detail.base.atk} · 防 ${detail.base.def} · 速 ${detail.base.spd}</div>
@@ -727,11 +1014,16 @@ function renderDexDetail(detail) {
   }
 }
 
-function openDexDetail(speciesId) {
+function openDexDetail(speciesId, mon = null) {
   const detail = getDexDetail(speciesId, SPECIES);
   if (!detail) return;
-  renderDexDetail(detail);
+  renderDexDetail(detail, mon);
   $('dex-detail-modal').classList.remove('hidden');
+}
+
+function openPartyDetail(mon) {
+  closePartyPopover();
+  openDexDetail(mon.speciesId, mon);
 }
 
 function closeDexDetail() {
@@ -817,6 +1109,7 @@ function buildPartyPopover(mon, index) {
     });
     pop.appendChild(btn);
   };
+  add('详情', false, '', () => openPartyDetail(mon));
   add('左移', !canShiftParty(mon.uid, -1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, -1)));
   add('右移', !canShiftParty(mon.uid, 1), '', () => runPartyAction(() => moveWithinZone(state.party, mon.uid, 1)));
   if (active) {
@@ -839,7 +1132,11 @@ function renderParty(container, selectable, onPick, mons = null, { onlyConscious
     const sp = SPECIES[mon.speciesId];
     const card = document.createElement(selectable ? 'button' : 'div');
     if (selectable) card.type = 'button';
-    card.className = `party-card${selectable ? ' selectable' : ''}${mon.shiny ? ' shiny' : ''}`;
+    card.className = partyCardClassName({
+      selectable: !!selectable,
+      shiny: !!mon.shiny,
+      boss: !!mon.boss,
+    });
     const index = state.party.findIndex((p) => p.uid === mon.uid);
     const inBattle = index >= 0 && index < ACTIVE_CAP;
     if (inBattle && !selectable) card.classList.add('in-battle');
@@ -885,6 +1182,10 @@ function typeLabel(t) {
   }[t] || t;
 }
 
+function typeTagClass(t) {
+  return `tag type type-${t || 'normal'}`;
+}
+
 function setMapNote(text) {
   const note = $('map-note');
   if (note) note.textContent = text || '';
@@ -892,6 +1193,16 @@ function setMapNote(text) {
 
 function tryEnterMap(mapId) {
   const map = MAPS[mapId];
+  if (map.spiritHall) {
+    const gate = canEnterSpiritHall(state);
+    if (!gate.ok) {
+      renderSelect();
+      setMapNote('灵堂需先通关一次双子塔才能进入。');
+      return;
+    }
+    startMazeRun();
+    return;
+  }
   if (map.rift) {
     const spent = trySpendRiftFruit(state, partyMaxLevel(state.party));
     if (!spent.ok) {
@@ -922,6 +1233,439 @@ function tryEnterMap(mapId) {
   openMap(mapId);
 }
 
+function startMazeRun() {
+  stopMazeMotion();
+  mazeRun = createMazeRun({ floor: 1 });
+  currentMapId = 'spirit_hall';
+  renderMaze();
+  showScreen('maze');
+}
+
+function endMazeRun({ message } = {}) {
+  stopMazeMotion();
+  mazeRun = null;
+  playExploreBgm();
+  showScreen('select');
+  renderSelect();
+  if (message) setMapNote(message);
+}
+
+function inSpiritHall() {
+  return !!mazeRun && currentMapId === 'spirit_hall';
+}
+
+function returnAfterMazeBattle() {
+  if (!inSpiritHall()) {
+    openMap(currentMapId);
+    return;
+  }
+  renderMaze();
+  showScreen('maze');
+  playExploreBgm();
+}
+
+function failMazeRun() {
+  endMazeRun({ message: '队伍全灭，已离开灵堂。下次从第 1 层重新开始。' });
+}
+
+function resumeAfterMazeCatch() {
+  if (!inSpiritHall()) {
+    openMap(currentMapId);
+    return;
+  }
+  const tag = pendingEncounter?.maze;
+  if (tag?.kind === 'roamer') {
+    mazeRun = removeRoamer(mazeRun, tag.roamerId);
+    returnAfterMazeBattle();
+    return;
+  }
+  if (tag?.kind === 'boss') {
+    mazeRun = markFloorBossDefeated(mazeRun);
+    afterFloorBossCleared(); // may call endMazeRun on floor 3
+    if (mazeRun) returnAfterMazeBattle();
+    return;
+  }
+  returnAfterMazeBattle();
+}
+
+function mazeTilePx() {
+  const vp = $('maze-viewport');
+  const raw = vp ? getComputedStyle(vp).getPropertyValue('--maze-tile').trim() : '';
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : MAZE_TILE;
+}
+
+function mazeViewSize() {
+  const vp = $('maze-viewport');
+  if (!vp) return { w: MAZE_VIEW_W, h: MAZE_VIEW_H };
+  const cs = getComputedStyle(vp);
+  const w = parseInt(cs.getPropertyValue('--maze-view-w'), 10);
+  const h = parseInt(cs.getPropertyValue('--maze-view-h'), 10);
+  return {
+    w: Number.isFinite(w) && w > 0 ? w : MAZE_VIEW_W,
+    h: Number.isFinite(h) && h > 0 ? h : MAZE_VIEW_H,
+  };
+}
+
+const MAZE_HELP_TEXT = '点任意可走格子，角色会自动走过去。也可以用左侧摇杆移动。踩到游荡宝可梦开战；楼梯处为层主。全灭或退出将结束本次探索。';
+const MAZE_STEP_MS = 320;
+const PARTY_HELP_TEXT = '点卡排序。前 6 出场；收回进背包，上场回前 6。';
+
+let mazeToastTimer = null;
+let appToastTimer = null;
+
+function mazePlayerSprite() {
+  const lead = activeParty(state.party).find((p) => p.hp > 0) || state.party[0];
+  const sp = SPECIES[lead?.speciesId];
+  return sp?.sprite || 'assets/pokemon/scorbunny.png';
+}
+
+function showMazeToast(text, ms = 4200) {
+  const el = $('maze-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (mazeToastTimer) clearTimeout(mazeToastTimer);
+  mazeToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    mazeToastTimer = null;
+  }, ms);
+}
+
+function showAppToast(text, ms = 4000) {
+  const el = $('app-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    appToastTimer = null;
+  }, ms);
+}
+
+function onMazeTileClick(x, y) {
+  if (!mazeRun) return;
+  const path = findMazePath(mazeRun, x, y);
+  if (!path.length) return;
+  mazeStickPointer = null;
+  stopMazeStick();
+  mazePath = path;
+  mazeDest = path[path.length - 1];
+  showMazeDest();
+  if (!mazeWalkTimer) scheduleMazeStep();
+}
+
+function clearMazePath() {
+  mazePath = [];
+  mazeDest = null;
+  if (mazeWalkTimer) {
+    clearTimeout(mazeWalkTimer);
+    mazeWalkTimer = null;
+  }
+  $('maze-world')?.querySelector('.maze-dest')?.remove();
+}
+
+function stopMazeStick() {
+  mazeStickDir = null;
+  if (mazeStickTimer) {
+    clearInterval(mazeStickTimer);
+    mazeStickTimer = null;
+  }
+  const knob = $('maze-stick-knob');
+  if (knob) knob.style.transform = '';
+  $('maze-stick')?.removeAttribute('data-dir');
+}
+
+function stopMazeMotion() {
+  clearMazePath();
+  stopMazeStick();
+}
+
+function showMazeDest() {
+  const world = $('maze-world');
+  if (!world || !mazeDest) return;
+  let el = world.querySelector('.maze-dest');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'maze-dest';
+    world.appendChild(el);
+  }
+  const tile = mazeTilePx();
+  el.style.left = `${mazeDest.x * tile}px`;
+  el.style.top = `${mazeDest.y * tile}px`;
+  el.style.width = `${tile}px`;
+  el.style.height = `${tile}px`;
+}
+
+function placeMazeCamera() {
+  const world = $('maze-world');
+  if (!world || !mazeRun) return;
+  const tile = mazeTilePx();
+  const view = mazeViewSize();
+  const camX = mazeRun.player.x * tile - (view.w * tile) / 2 + tile / 2;
+  const camY = mazeRun.player.y * tile - (view.h * tile) / 2 + tile / 2;
+  world.style.transform = `translate(${-camX}px, ${-camY}px)`;
+}
+
+function refreshMazeMinimap() {
+  const canvas = $('maze-minimap');
+  if (!canvas || !mazeRun) return;
+  const cssW = parseFloat(getComputedStyle(canvas).width) || MAZE_MINIMAP_SIZE;
+  const size = Math.round(cssW) || MAZE_MINIMAP_SIZE;
+  const ctx = canvas.getContext('2d');
+  paintMazeMinimap(ctx, mazeRun, size);
+}
+
+function syncMazePlayer() {
+  const world = $('maze-world');
+  const playerImg = world?.querySelector('.maze-entity.player');
+  if (!world || !playerImg || !mazeRun) return;
+  const tile = mazeTilePx();
+  playerImg.style.left = `${mazeRun.player.x * tile}px`;
+  playerImg.style.top = `${mazeRun.player.y * tile}px`;
+  placeMazeCamera();
+  refreshMazeMinimap();
+}
+
+function scheduleMazeStep() {
+  mazeWalkTimer = setTimeout(runMazeStep, MAZE_STEP_MS);
+}
+
+function runMazeStep() {
+  mazeWalkTimer = null;
+  if (!mazeRun || !mazePath.length) {
+    clearMazePath();
+    return;
+  }
+  const next = mazePath[0];
+  const dx = next.x - mazeRun.player.x;
+  const dy = next.y - mazeRun.player.y;
+  if (Math.abs(dx) + Math.abs(dy) !== 1) {
+    clearMazePath();
+    return;
+  }
+  mazePath.shift();
+  const event = tryMazeStep(dx, dy);
+  if (event || !mazeRun || !mazePath.length) {
+    clearMazePath();
+  } else {
+    scheduleMazeStep();
+  }
+}
+
+function stickVector(clientX, clientY) {
+  const el = $('maze-stick');
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const dx = clientX - (rect.left + rect.width / 2);
+  const dy = clientY - (rect.top + rect.height / 2);
+  const dead = 16;
+  if (dx * dx + dy * dy < dead * dead) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? { dir: [1, 0], name: 'e' } : { dir: [-1, 0], name: 'w' };
+  return dy > 0 ? { dir: [0, 1], name: 's' } : { dir: [0, -1], name: 'n' };
+}
+
+function placeStickKnob(clientX, clientY) {
+  const el = $('maze-stick');
+  const knob = $('maze-stick-knob');
+  if (!el || !knob) return;
+  const rect = el.getBoundingClientRect();
+  let dx = clientX - (rect.left + rect.width / 2);
+  let dy = clientY - (rect.top + rect.height / 2);
+  const max = rect.width * 0.28;
+  const len = Math.hypot(dx, dy) || 1;
+  if (len > max) {
+    dx = (dx / len) * max;
+    dy = (dy / len) * max;
+  }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
+function pauseStickSteps() {
+  mazeStickDir = null;
+  if (mazeStickTimer) {
+    clearInterval(mazeStickTimer);
+    mazeStickTimer = null;
+  }
+  $('maze-stick')?.removeAttribute('data-dir');
+}
+
+function applyMazeStick(e) {
+  if (!mazeRun) return;
+  placeStickKnob(e.clientX, e.clientY);
+  const next = stickVector(e.clientX, e.clientY);
+  if (!next) {
+    pauseStickSteps();
+    return;
+  }
+  if (!mazeStickDir) clearMazePath();
+  mazeStickDir = next.dir;
+  $('maze-stick')?.setAttribute('data-dir', next.name);
+  if (!mazeStickTimer) {
+    tryMazeStep(mazeStickDir[0], mazeStickDir[1]);
+    if (!mazeRun || !mazeStickDir) return;
+    mazeStickTimer = setInterval(() => {
+      if (!mazeStickDir || !mazeRun) return;
+      tryMazeStep(mazeStickDir[0], mazeStickDir[1]);
+    }, MAZE_STEP_MS);
+  }
+}
+
+function bindMazeStick() {
+  const stick = $('maze-stick');
+  if (!stick || stick.dataset.bound) return;
+  stick.dataset.bound = '1';
+  stick.addEventListener('pointerdown', (e) => {
+    if (!mazeRun) return;
+    mazeStickPointer = e.pointerId;
+    stick.setPointerCapture(e.pointerId);
+    applyMazeStick(e);
+    e.preventDefault();
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (mazeStickPointer !== e.pointerId) return;
+    if (!stick.hasPointerCapture(e.pointerId)) return;
+    applyMazeStick(e);
+  });
+  const end = (e) => {
+    if (stick.hasPointerCapture(e.pointerId)) stick.releasePointerCapture(e.pointerId);
+    if (mazeStickPointer !== e.pointerId) return;
+    mazeStickPointer = null;
+    stopMazeStick();
+  };
+  stick.addEventListener('pointerup', end);
+  stick.addEventListener('pointercancel', end);
+}
+
+function onMazeWorldClick(e) {
+  const cell = e.target.closest('.maze-tile');
+  if (!cell || !mazeRun) return;
+  const x = Number(cell.dataset.mazeX);
+  const y = Number(cell.dataset.mazeY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  onMazeTileClick(x, y);
+}
+
+function renderMaze() {
+  if (!mazeRun) return;
+  $('maze-title').textContent = `灵堂 · 第 ${mazeRun.floor} 层`;
+  const world = $('maze-world');
+  if (!world) return;
+  const tile = mazeTilePx();
+  const h = mazeRun.grid.length;
+  const w = mazeRun.grid[0].length;
+  world.style.width = `${w * tile}px`;
+  world.style.height = `${h * tile}px`;
+  world.innerHTML = '';
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const kind = mazeRun.grid[y][x];
+      const cell = document.createElement('div');
+      const walkable = kind !== 'wall';
+      cell.className = `maze-tile ${kind}${walkable ? ' walkable' : ''}`;
+      cell.style.left = `${x * tile}px`;
+      cell.style.top = `${y * tile}px`;
+      cell.style.width = `${tile}px`;
+      cell.style.height = `${tile}px`;
+      if (walkable) {
+        cell.dataset.mazeX = String(x);
+        cell.dataset.mazeY = String(y);
+      }
+      world.appendChild(cell);
+    }
+  }
+
+  for (const roamer of mazeRun.roamers) {
+    const sp = SPECIES[roamer.speciesId];
+    if (!sp) continue;
+    const img = document.createElement('img');
+    img.className = 'maze-entity roamer';
+    img.src = spriteUrl(sp.sprite);
+    img.alt = sp.name;
+    img.title = `${sp.name} Lv.${roamer.level}`;
+    img.style.left = `${roamer.x * tile}px`;
+    img.style.top = `${roamer.y * tile}px`;
+    img.style.width = `${tile * 0.82}px`;
+    img.style.height = `${tile * 0.82}px`;
+    world.appendChild(img);
+  }
+
+  if (!mazeRun.floorBossDefeated && mazeRun.stairs) {
+    const boss = SPIRIT_HALL_BOSS_BY_FLOOR[mazeRun.floor];
+    const sp = SPECIES[boss?.speciesId];
+    if (sp) {
+      const img = document.createElement('img');
+      img.className = 'maze-entity boss';
+      img.src = spriteUrl(sp.sprite);
+      img.alt = sp.name;
+      img.title = `${sp.name} Lv.${boss.level}`;
+      img.style.left = `${mazeRun.stairs.x * tile}px`;
+      img.style.top = `${mazeRun.stairs.y * tile}px`;
+      img.style.width = `${tile * 0.82}px`;
+      img.style.height = `${tile * 0.82}px`;
+      world.appendChild(img);
+    }
+  }
+
+  const playerImg = document.createElement('img');
+  playerImg.className = 'maze-entity player';
+  playerImg.src = spriteUrl(mazePlayerSprite());
+  playerImg.alt = '我方';
+  playerImg.style.left = `${mazeRun.player.x * tile}px`;
+  playerImg.style.top = `${mazeRun.player.y * tile}px`;
+  playerImg.style.width = `${tile * 0.82}px`;
+  playerImg.style.height = `${tile * 0.82}px`;
+  world.appendChild(playerImg);
+  placeMazeCamera();
+  refreshMazeMinimap();
+  if (mazeDest) showMazeDest();
+}
+
+function tryMazeStep(dx, dy) {
+  if (!mazeRun) return null;
+  const beforeX = mazeRun.player.x;
+  const beforeY = mazeRun.player.y;
+  const { run, event } = stepMaze(mazeRun, dx, dy);
+  mazeRun = run;
+  if (event) {
+    stopMazeMotion();
+    renderMaze();
+    if (event.type === 'roamer') beginMazeRoamerBattle(event.roamer);
+    else if (event.type === 'stairs') {
+      if (!mazeRun.floorBossDefeated) beginMazeBossBattle();
+      else afterFloorBossCleared();
+    }
+    return event;
+  }
+  if (run.player.x !== beforeX || run.player.y !== beforeY) syncMazePlayer();
+  return null;
+}
+
+function beginMazeRoamerBattle(roamer) {
+  const tmpl = buildRoamerEncounter(roamer);
+  tmpl.pokemon = createPokemon(roamer.speciesId, roamer.level, { shiny: false, boss: false });
+  tmpl.shiny = false;
+  tmpl.boss = false;
+  startPick(tmpl);
+}
+
+function beginMazeBossBattle() {
+  const tmpl = buildFloorBossEncounter(mazeRun.floor);
+  tmpl.pokemon = createPokemon(tmpl.speciesId, tmpl.level, { shiny: true, boss: true });
+  startPick(tmpl);
+}
+
+function afterFloorBossCleared() {
+  if (mazeRun.floor >= 3) {
+    endMazeRun({ message: '灵堂通关！基格尔德已被击败。' });
+    return;
+  }
+  mazeRun = advanceMazeFloor(mazeRun);
+  renderMaze();
+}
+
 function openMap(mapId) {
   currentMapId = mapId;
   const map = MAPS[mapId];
@@ -940,7 +1684,12 @@ function openMap(mapId) {
     const boss = trainer ? enc.team.some((m) => m.boss) : enc.boss;
     const el = document.createElement('button');
     el.type = 'button';
-    el.className = `marker ${enc.kind}${shiny ? ' shiny' : ''}${cleared ? ' cleared' : ''}`;
+    el.className = markerClassName({
+      kind: enc.kind,
+      shiny: !!shiny,
+      boss: !!boss,
+      cleared: !!cleared,
+    });
     el.style.left = `${enc.x}%`;
     el.style.top = `${enc.y}%`;
     const who = enc.dual
@@ -1007,7 +1756,7 @@ function foeIntro(enc) {
   const sp = SPECIES[enc.speciesId];
   const tags = `${enc.boss ? '（头目）' : ''}${enc.shiny ? '（闪光）' : ''}${sp.mega ? '（超级进化）' : ''}`;
   if (enc.squad) {
-    const skills = (sp.moves || [sp.move]).map((move) => move.name).join('、');
+    const skills = castMoveNames(sp, { squadBoss: true }).join('、');
     return `对手：${sp.name} Lv.${enc.level}${tags}。技能：${skills}。你和 3 只电脑宝可梦组队应战。`;
   }
   return `对手：野生的 ${sp.name} Lv.${enc.level}${tags}`;
@@ -1041,7 +1790,12 @@ function renderDualLeadPick() {
     const card = document.createElement('button');
     card.type = 'button';
     const selected = dualPickUids.includes(mon.uid);
-    card.className = `party-card selectable${selected ? ' selected' : ''}${mon.shiny ? ' shiny' : ''}`;
+    card.className = partyCardClassName({
+      selectable: true,
+      selected: !!selected,
+      shiny: !!mon.shiny,
+      boss: !!mon.boss,
+    });
     const order = dualPickUids.indexOf(mon.uid);
     card.innerHTML = `
       <div class="sprite-frame"><img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" /></div>
@@ -1105,6 +1859,7 @@ function startDualBattle(playerMons) {
   continueResolver = null;
   beginDualCommandPhase();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function startBattle(playerMon, { freshLog = true } = {}) {
@@ -1130,6 +1885,7 @@ function startBattle(playerMon, { freshLog = true } = {}) {
   } else appendLog(`上吧，${SPECIES[player.speciesId].name}！`);
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function fillDualSlot(playerMon) {
@@ -1148,16 +1904,16 @@ function fillDualSlot(playerMon) {
   renderBattle();
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function renderSprite(wrapId, mon) {
   const wrap = $(wrapId);
   const sp = SPECIES[mon.speciesId];
-  wrap.className = `sprite-wrap${mon.shiny ? ' shiny' : ''}`;
+  const floats = [...wrap.querySelectorAll('.fx-num')];
+  wrap.className = spriteWrapClassName({ shiny: !!mon.shiny, boss: !!mon.boss });
   wrap.innerHTML = `<img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" />`;
-  if (mon.boss) {
-    wrap.innerHTML += '<div class="boss-eyes"><span></span><span></span></div>';
-  }
+  for (const num of floats) wrap.appendChild(num);
 }
 
 function renderFighterSlot(side, index, mon) {
@@ -1192,9 +1948,8 @@ function renderFighterSlot(side, index, mon) {
     `;
   }
   if (skillsId && $(skillsId)) {
-    $(skillsId).textContent = sp.moves?.length
-      ? `技能 ${sp.moves.map((move) => move.name).join(' · ')}`
-      : '';
+    const names = castMoveNames(sp, { squadBoss: pendingEncounter?.squad && side === 'foe' });
+    $(skillsId).textContent = names.length ? `技能 ${names.join(' · ')}` : '';
   }
   setHpBar(hpId, mon.hp, mon.maxHp);
   renderSprite(wrapId, mon);
@@ -1286,6 +2041,26 @@ function refreshBattleAnimButton() {
   btn.textContent = `动画 · ${BATTLE_ANIM_LABEL[mode]}`;
 }
 
+function battleSpeciesIds() {
+  if (!battle) return [];
+  const ids = [];
+  if (battle.dual) {
+    for (const mon of battle.players || []) ids.push(mon?.speciesId);
+    for (const mon of battle.foes || []) ids.push(mon?.speciesId);
+  } else {
+    if (battle.player) ids.push(battle.player.speciesId);
+    if (battle.foe) ids.push(battle.foe.speciesId);
+    for (const mon of battle.allies || []) ids.push(mon?.speciesId);
+  }
+  return ids;
+}
+
+/** Fire-and-forget: warm heavy-mode fight frames while the battle screen is up. */
+function preloadBattleFighterFrames() {
+  if (normalizeBattleAnim(state.battleAnim) !== 'heavy') return;
+  void preloadFighterFrames(battleSpeciesIds());
+}
+
 function slotWrap(side, index) {
   const suffix = index === 0 ? '' : '-1';
   return $(side === 'player' ? `player-sprite-wrap${suffix}` : `foe-sprite-wrap${suffix}`);
@@ -1294,7 +2069,7 @@ function slotWrap(side, index) {
 function battleHitElements(line) {
   if (battle?.dual && (line.actorIndex != null || line.targetIndex != null)) {
     const atkSide = line.side;
-    const defSide = line.side === 'player' ? 'foe' : 'player';
+    const defSide = line.targetSide || (line.side === 'player' ? 'foe' : 'player');
     return {
       attackerEl: slotWrap(atkSide, line.actorIndex || 0),
       defenderEl: slotWrap(defSide, line.targetIndex || 0),
@@ -1341,7 +2116,7 @@ async function playDualTurnHits(turn) {
   for (let i = 0; i < turn.logs.length; i += 1) {
     const line = turn.logs[i];
     appendLog(line.text);
-    const actorIndex = line.actorIndex || 0;
+    const actorIndex = line.actorIndex ?? 0;
     const effectFx = line.effect
       ? {
           attackerEl: slotWrap(line.side, actorIndex),
@@ -1376,22 +2151,33 @@ async function playDualTurnHits(turn) {
         mon.hp = hp;
         renderFighterSlot('foe', idx, mon);
       });
-    } else if (!line.effect) {
-      if (line.side === 'player') {
-        const foe = battle.foes[line.targetIndex];
-        if (foe) {
-          foe.hp = Math.max(0, foe.hp - line.damage);
-          renderFighterSlot('foe', line.targetIndex, foe);
-        }
-      } else {
-        const player = battle.players[line.targetIndex];
-        if (player) {
-          player.hp = Math.max(0, player.hp - line.damage);
-          renderFighterSlot('player', line.targetIndex, player);
-        }
+    } else if (line.effect && line.actorIndex != null) {
+      const sideArr = line.side === 'player' ? battle.players : battle.foes;
+      const source = line.side === 'player' ? turn.players : turn.foes;
+      if (sideArr[line.actorIndex] && source[line.actorIndex]) {
+        sideArr[line.actorIndex] = { ...source[line.actorIndex] };
+        renderFighterSlot(line.side === 'player' ? 'player' : 'foe', line.actorIndex, sideArr[line.actorIndex]);
+      }
+    } else if (line.side === 'player') {
+      const foe = battle.foes[line.targetIndex];
+      if (foe) {
+        foe.hp = Math.max(0, foe.hp - line.damage);
+        renderFighterSlot('foe', line.targetIndex, foe);
+      }
+    } else {
+      const player = battle.players[line.targetIndex];
+      if (player) {
+        player.hp = Math.max(0, player.hp - line.damage);
+        renderFighterSlot('player', line.targetIndex, player);
       }
     }
     syncBattleHp();
+    if (line.effect === 'heal') {
+      const actor = line.side === 'player' ? battle.players[actorIndex] : battle.foes[actorIndex];
+      showHealNumber(attackerEl, Math.floor((actor?.maxHp || 0) * 0.5));
+    } else if (!line.effect) {
+      showLineNumber(line);
+    }
     await wait(HP_ANIM_MS);
     if (battle.foes.every((f) => f.hp <= 0)) {
       await waitForContinue('两只 Boss 都倒下了！');
@@ -1422,6 +2208,23 @@ async function playTurnHits(turn, startPlayer, startFoe) {
     appendLog(line.text);
     const { attackerEl, defenderEl, attackerSpeciesId } = battleHitElements(line);
     playAttackSfx(line.moveType || 'normal');
+    if (line.effect) {
+      if (line.side === 'player') {
+        playerHp = turn.player.hp;
+        battle.player = { ...battle.player, ...turn.player, hp: playerHp };
+        setHpBar('player-hp', playerHp, battle.player.maxHp);
+        if (line.effect === 'heal') showHealNumber(attackerEl, Math.floor(battle.player.maxHp * 0.5));
+      } else if (line.side === 'foe') {
+        foeHp = turn.foe.hp;
+        battle.foe = { ...battle.foe, ...turn.foe, hp: foeHp };
+        setHpBar('foe-hp', foeHp, battle.foe.maxHp);
+        if (line.effect === 'heal') showHealNumber(attackerEl, Math.floor(battle.foe.maxHp * 0.5));
+      }
+      syncBattleHp();
+      await wait(HP_ANIM_MS);
+      if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+      continue;
+    }
     await playHit({
       side: line.side,
       attackerSpeciesId,
@@ -1445,6 +2248,7 @@ async function playTurnHits(turn, startPlayer, startFoe) {
       setHpBar('player-hp', playerHp, battle.player.maxHp);
     }
     syncBattleHp();
+    showLineNumber(line);
     await wait(HP_ANIM_MS);
 
     if (playerWasUp && playerHp <= 0) playerFell = true;
@@ -1465,6 +2269,24 @@ async function playTurnHits(turn, startPlayer, startFoe) {
   if (turn.allies) battle.allies = turn.allies.map((ally) => ({ ...ally }));
   syncBattleHp();
   renderAllies();
+}
+
+function showLineNumber(line) {
+  const { defenderEl } = battleHitElements(line);
+  playDamageNumber(defenderEl, {
+    amount: line.damage,
+    typeMult: line.typeMult,
+    crit: !!line.crit,
+    enabled: state.damageNumbers !== false,
+  });
+}
+
+function showHealNumber(anchorEl, amount) {
+  playDamageNumber(anchorEl, {
+    amount,
+    heal: true,
+    enabled: state.damageNumbers !== false,
+  });
 }
 
 function grantRiftFruit(foe) {
@@ -1490,14 +2312,14 @@ function finishDualTurnOutcome(turn) {
       return;
     }
     appendLog('同归于尽…你败北了。');
-    $('btn-attack').disabled = true;
+    setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
     setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
     return;
   }
   if (turn.result === 'lose') {
     appendLog('你没有可以继续对战的宝可梦了…');
-    $('btn-attack').disabled = true;
+    setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
     setTimeout(() => leaveBattle(), 900);
     return;
@@ -1569,23 +2391,29 @@ function finishTurnOutcome(turn) {
   setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
 }
 
-async function onAttack() {
+function onAttack() {
+  if (!battle?.dual) return;
+  if (continueResolver) continueResolver();
+}
+
+async function onPickMove(move) {
   if (continueResolver) {
     continueResolver();
     return;
   }
   if (battle?.dual) return;
   if (!battle || battleBusy) return;
+  if (move.effect && battle.player.usedUtility) return;
   battleBusy = true;
   setBattleActionBusy(true);
-
   try {
     const startPlayer = { ...battle.player };
     const startFoe = { ...battle.foe };
+    const foeMove = chooseFoeMove(startFoe, startPlayer);
     const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
     const turn = startAllies
-      ? resolveSquadTurn(startPlayer, startAllies, startFoe)
-      : resolveTurn(startPlayer, startFoe);
+      ? resolveSquadTurn(startPlayer, startAllies, startFoe, Math.random, move, chooseFoeMove(startFoe, startPlayer))
+      : resolveTurn(startPlayer, startFoe, Math.random, move, foeMove);
     await playTurnHits(turn, startPlayer, startFoe);
     finishTurnOutcome(turn);
   } catch (err) {
@@ -1594,45 +2422,20 @@ async function onAttack() {
   }
 }
 
-function renderItemList() {
-  const list = $('item-list');
-  list.innerHTML = '';
-  for (const item of Object.values(HEAL_ITEMS)) {
-    const owned = state.items?.[item.id] || 0;
-    const effect = item.heal === 'full' ? '回复全部 HP' : `回复 ${item.heal} HP`;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'item-row';
-    row.disabled = owned <= 0;
-    row.innerHTML = `
-      <span class="item-icon">${item.icon}</span>
-      <span class="item-name">${item.name}</span>
-      <span class="item-effect">${effect}</span>
-      <span class="item-owned">×${owned}</span>
-    `;
-    row.addEventListener('click', () => onUseItem(item.id));
-    list.appendChild(row);
-  }
-}
-
-function openItemPanel() {
-  if (!canUseHealItem()) return;
-  renderItemList();
-  $('item-panel').classList.remove('hidden');
-}
-
 async function onUseItem(itemId) {
   if (!battle || battleBusy || continueResolver) return;
-  const item = HEAL_ITEMS[itemId];
-  if (!item) return;
-  if ((state.items?.[itemId] || 0) <= 0) return;
-  const targets = healTargetsOnField();
-  if (!targets.length) return;
-  targets.sort((a, b) => (a.mon.maxHp - a.mon.hp) - (b.mon.maxHp - b.mon.hp));
-  const { mon: fieldMon, index: slot } = targets[targets.length - 1];
-  const uid = battle.dual ? battle.playerUids[slot] : battle.playerUid;
-  const fighter = state.party.find((p) => p.uid === uid);
-  if (!fighter || fighter.hp <= 0 || fighter.hp >= fighter.maxHp) return;
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  const target = autoTargetForItem(item);
+  if (!target) return;
+
+  const fighter = state.party.find((p) => p.uid === target.uid);
+  if (!fighter) return;
+
+  if (target.onField && target.index >= 0) {
+    const fieldMon = onFieldMons()[target.index];
+    if (fieldMon) fighter.hp = fieldMon.hp;
+  }
 
   closeItemPanel();
   battleBusy = true;
@@ -1652,18 +2455,53 @@ async function onUseItem(itemId) {
     });
   }
 
-  state.items[itemId] -= 1;
-  fighter.hp = fieldMon.hp;
-  const amount = applyHealItem(fighter, itemId);
-  if (battle.dual) {
-    battle.players[slot] = { ...battle.players[slot], hp: fighter.hp };
-    battle.player = battle.players[0];
-  } else {
-    battle.player = { ...fighter };
+  const result = applyItem(fighter, itemId);
+  if (!result.ok) {
+    battleBusy = false;
+    setBattleActionBusy(false);
+    if (battle.dual) beginDualCommandPhase();
+    return;
   }
-  appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${amount} 点 HP！`);
+  state.items[itemId] -= 1;
+
+  if (target.onField && target.index >= 0) {
+    if (battle.dual) {
+      const prev = battle.players[target.index];
+      battle.players[target.index] = withBattleState({
+        ...fighter,
+        usedUtility: prev?.usedUtility ?? false,
+        atkMul: prev?.atkMul ?? 1,
+        defMul: prev?.defMul ?? 1,
+      });
+      battle.player = battle.players[0];
+    } else {
+      const prev = battle.player;
+      battle.player = withBattleState({
+        ...fighter,
+        usedUtility: prev?.usedUtility ?? false,
+        atkMul: prev?.atkMul ?? 1,
+        defMul: prev?.defMul ?? 1,
+      });
+    }
+  }
+
+  if (result.kind === 'heal') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    appendLog(`使用了 ${item.name}！${SPECIES[fighter.speciesId].name} 复活了！（HP ${fighter.hp}/${fighter.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    appendLog(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) appendLog(line);
+  }
   save();
   renderBattle();
+  if (result.kind === 'heal' || result.kind === 'revive') {
+    const healAmt = result.kind === 'heal' ? result.amount : fighter.hp;
+    const wrap = battle.dual && target.index >= 0
+      ? slotWrap('player', target.index)
+      : $('player-sprite-wrap');
+    showHealNumber(wrap, healAmt);
+  }
 
   try {
     if (battle.dual) {
@@ -1689,6 +2527,104 @@ async function onUseItem(itemId) {
     console.error(err);
     resetAttackButton();
   }
+}
+
+function monAcceptsItem(mon, item) {
+  if (!mon || !item) return false;
+  if (item.effect === 'heal') return mon.hp > 0 && mon.hp < mon.maxHp;
+  if (item.effect === 'revive') return mon.hp <= 0;
+  if (item.effect === 'xp') return true;
+  return false;
+}
+
+function renderItemsModalList() {
+  const list = $('items-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const inBattle = isBattleScreenActive();
+  for (const item of Object.values(ITEMS)) {
+    const owned = state.items?.[item.id] || 0;
+    if (owned <= 0) continue;
+    const usable = inBattle
+      ? ownedItemUsableInBattle(item)
+      : state.party.some((m) => monAcceptsItem(m, item));
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'item-row';
+    row.disabled = !usable;
+    if (!usable) row.title = '现在不能使用';
+    row.innerHTML = `
+      <span class="item-icon">${item.icon}</span>
+      <span class="item-name">${item.name}</span>
+      <span class="item-effect">${itemEffectLabel(item)}</span>
+      <span class="item-owned">×${owned}</span>
+    `;
+    row.addEventListener('click', () => {
+      if (inBattle) onUseItem(item.id);
+      else openItemsTargetPicker(item.id);
+    });
+    list.appendChild(row);
+  }
+  if (!list.children.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = '没有道具';
+    list.appendChild(empty);
+  }
+}
+
+function openItemsTargetPicker(itemId) {
+  const item = ITEMS[itemId];
+  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  itemsUiSelectedId = itemId;
+  const list = $('items-target-list');
+  list.innerHTML = '';
+  for (const mon of state.party) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'party-card';
+    const ok = monAcceptsItem(mon, item);
+    btn.disabled = !ok;
+    const sp = SPECIES[mon.speciesId];
+    btn.textContent = `${sp?.name || mon.speciesId} Lv.${mon.level}  HP ${mon.hp}/${mon.maxHp}`;
+    btn.addEventListener('click', () => onItemsUseOutOfBattle(mon.uid));
+    list.appendChild(btn);
+  }
+  $('items-step-list').classList.add('hidden');
+  $('items-step-target').classList.remove('hidden');
+  $('items-title').textContent = '选择宝可梦';
+}
+
+function onItemsUseOutOfBattle(uid) {
+  const item = ITEMS[itemsUiSelectedId];
+  const mon = state.party.find((p) => p.uid === uid);
+  if (!item || !mon || (state.items?.[item.id] || 0) <= 0) return;
+  if (!monAcceptsItem(mon, item)) return;
+  const result = applyItem(mon, item.id);
+  if (!result.ok) return;
+  state.items[item.id] -= 1;
+  const lines = [];
+  if (result.kind === 'heal') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 回复了 ${result.amount} 点 HP！`);
+  } else if (result.kind === 'revive') {
+    lines.push(`使用了 ${item.name}！${SPECIES[mon.speciesId].name} 复活了！（HP ${mon.hp}/${mon.maxHp}）`);
+  } else if (result.kind === 'xp') {
+    lines.push(`使用了 ${item.name}！`);
+    for (const line of result.logs || []) lines.push(line);
+  }
+  showAppToast(lines.join(' '));
+  save();
+  renderParty($('party-list'), false);
+  closeItemsModal();
+}
+
+function openItemsUi() {
+  if (isBattleScreenActive() && (battleBusy || continueResolver)) return;
+  $('items-title').textContent = '道具';
+  $('items-step-list').classList.remove('hidden');
+  $('items-step-target').classList.add('hidden');
+  renderItemsModalList();
+  $('items-modal').classList.remove('hidden');
 }
 
 function awardXp(foe) {
@@ -1734,6 +2670,7 @@ function sendNextFoe() {
   battle.foe = { ...sent };
   appendLog(`${pendingEncounter.trainerName} 派出了 ${SPECIES[sent.speciesId].name}！`);
   renderBattle();
+  preloadBattleFighterFrames();
   if (battle?.player) {
     playBattleBgm({
       rift: !!battle.allies,
@@ -1788,12 +2725,22 @@ function openCatchPick() {
   showScreen('pick');
 }
 
-function leaveBattle() {
+function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
+  battle = null;
+  battleBusy = false;
+  continueResolver = null;
   for (const p of state.party) p.hp = p.maxHp;
   save();
   playExploreBgm();
+  if (inSpiritHall()) {
+    if (wipeMaze) failMazeRun();
+    else returnAfterMazeBattle();
+    updateItemButton();
+    return;
+  }
   openMap(currentMapId);
+  updateItemButton();
 }
 
 function finishBattleWin(evolved) {
@@ -1803,6 +2750,9 @@ function finishBattleWin(evolved) {
     state.coins += enc.reward;
     appendLog(`获得 ${enc.reward} 金币！`);
     refreshHeader();
+  }
+  if (currentMapId === 'twin_towers' && enc.dual) {
+    state.twinCleared = true;
   }
   for (const p of state.party) p.hp = p.maxHp;
   save();
@@ -1853,8 +2803,10 @@ function updateCatchCopy() {
 }
 
 function renderCatchStyle() {
+  const root = $('catch-style');
+  if (!root) return;
   const busy = !!catchCtrl?.isBusy();
-  for (const btn of $('catch-style').querySelectorAll('button')) {
+  for (const btn of root.querySelectorAll('button')) {
     btn.classList.toggle('selected', btn.dataset.style === state.catchStyle);
     btn.disabled = busy;
   }
@@ -1965,6 +2917,7 @@ function settleThrow(hit) {
     caught: success,
     onDone() {
       if (success) {
+        playCatchSuccessSfx();
         setCatchResult('咔哒！抓住了！', 'ok');
         claimPokemon(pendingEncounter.catchTarget);
       } else {
@@ -1997,7 +2950,7 @@ function claimPokemon(foe) {
       catchCtrl.destroy();
       catchCtrl = null;
     }
-    openMap(currentMapId);
+    resumeAfterMazeCatch();
   }, 1000);
 }
 
@@ -2008,7 +2961,7 @@ function skipCatch() {
     catchCtrl.destroy();
     catchCtrl = null;
   }
-  openMap(currentMapId);
+  resumeAfterMazeCatch();
 }
 
 function refreshAllEncounters() {
@@ -2049,10 +3002,10 @@ $('btn-cancel-pick').addEventListener('click', () => {
     return;
   }
   if (pickMode === 'catch') skipCatch();
-  else if (pickMode === 'lead' || pickMode === 'dual-lead') openMap(currentMapId);
+  else returnAfterMazeBattle();
 });
-$('btn-attack').addEventListener('click', onAttack);
-$('btn-switch-cmd').addEventListener('click', onDualSwitchCmd);
+$('btn-attack')?.addEventListener('click', onAttack);
+$('btn-switch-cmd')?.addEventListener('click', onDualSwitchCmd);
 $('btn-cmd-back')?.addEventListener('click', () => {
   if (dualCmdPhase === 'target' || dualCmdPhase === 'switch') enterDualAction(dualCmdSlot);
 });
@@ -2085,16 +3038,40 @@ $('battle-field')?.addEventListener('click', (e) => {
   const side = fighter.classList.contains('foe') ? 'foe' : 'player';
   commitDualMove(pendingMove, side, Number(fighter.dataset.slot));
 });
-$('btn-item').addEventListener('click', () => {
-  if (battleBusy || continueResolver) return;
-  if ($('item-panel').classList.contains('hidden')) openItemPanel();
-  else closeItemPanel();
+$('btn-maze-exit').addEventListener('click', () => {
+  if (!mazeRun) return;
+  endMazeRun({ message: '已退出灵堂（进度不保留）。' });
 });
-$('btn-close-items').addEventListener('click', closeItemPanel);
+$('btn-maze-info')?.addEventListener('click', () => {
+  showMazeToast(MAZE_HELP_TEXT);
+});
+$('maze-world')?.addEventListener('click', onMazeWorldClick);
+bindMazeStick();
+$('btn-party-info')?.addEventListener('click', () => {
+  showAppToast(PARTY_HELP_TEXT);
+});
+window.addEventListener('keydown', (e) => {
+  if (!$('screen-maze') || $('screen-maze').classList.contains('hidden')) return;
+  const dirs = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+    W: [0, -1], S: [0, 1], A: [-1, 0], D: [1, 0],
+  };
+  const d = dirs[e.key];
+  if (!d) return;
+  e.preventDefault();
+  clearMazePath();
+  tryMazeStep(d[0], d[1]);
+});
+$('btn-items')?.addEventListener('click', openItemsUi);
+$('btn-close-items')?.addEventListener('click', closeItemsModal);
+$('items-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('items-modal')) closeItemsModal();
+});
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   closeItemPanel();
-  leaveBattle();
+  leaveBattle({ wipeMaze: false });
 });
 $('btn-skip-catch').addEventListener('click', skipCatch);
 $('catch-style').addEventListener('click', (e) => {
@@ -2105,7 +3082,7 @@ $('catch-style').addEventListener('click', (e) => {
   state.catchStyle = style;
   save();
   renderCatchStyle();
-  updateCatchCopy();
+  if (!$('screen-catch').classList.contains('hidden')) updateCatchCopy();
 });
 $('btn-dex').addEventListener('click', openDex);
 $('btn-close-dex').addEventListener('click', closeDex);
@@ -2117,12 +3094,44 @@ $('dex-detail-modal').addEventListener('click', (e) => {
   if (e.target === $('dex-detail-modal')) closeDexDetail();
 });
 $('btn-shop').addEventListener('click', openShop);
+$('btn-settings').addEventListener('click', openSettings);
+$('btn-close-settings').addEventListener('click', closeSettings);
+$('settings-modal').addEventListener('click', (e) => {
+  if (e.target === $('settings-modal')) closeSettings();
+});
 $('btn-battle-anim').addEventListener('click', () => {
   const cur = normalizeBattleAnim(state.battleAnim);
   const idx = BATTLE_ANIM_ORDER.indexOf(cur);
   state.battleAnim = BATTLE_ANIM_ORDER[(idx + 1) % BATTLE_ANIM_ORDER.length];
   save();
   refreshBattleAnimButton();
+  if (isBattleScreenActive()) preloadBattleFighterFrames();
+});
+$('btn-damage-numbers').addEventListener('click', () => {
+  state.damageNumbers = !(state.damageNumbers !== false);
+  save();
+  refreshSettingsPanel();
+});
+$('btn-move-layout')?.addEventListener('click', () => {
+  const cur = normalizeBattleMoveLayout(state.battleMoveLayout);
+  const idx = BATTLE_MOVE_LAYOUTS.indexOf(cur);
+  state.battleMoveLayout = BATTLE_MOVE_LAYOUTS[(idx + 1) % BATTLE_MOVE_LAYOUTS.length];
+  save();
+  applyBattleMoveLayout();
+  if (battle) refreshMoveButtons();
+  refreshSettingsPanel();
+});
+$('btn-music').addEventListener('click', () => {
+  state.musicEnabled = !(state.musicEnabled !== false);
+  applyAudioSettings();
+  save();
+  refreshSettingsPanel();
+});
+$('btn-sfx').addEventListener('click', () => {
+  state.sfxEnabled = !(state.sfxEnabled !== false);
+  applyAudioSettings();
+  save();
+  refreshSettingsPanel();
 });
 $('btn-close-shop').addEventListener('click', closeShop);
 $('shop-modal').addEventListener('click', (e) => {
@@ -2146,6 +3155,8 @@ document.addEventListener('pointerdown', () => {
 document.addEventListener('dblclick', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
+applyAudioSettings();
+applyBattleMoveLayout();
 save();
 showScreen('select');
 renderSelect();

@@ -35,6 +35,8 @@ const FIGHTER_FRAME_MS = 90;
 const FIGHTER_ASSET_VER = 'fighter2';
 
 const fighterCache = new Map(); // speciesId -> HTMLImageElement[] | null
+/** @type {Map<string, Promise<HTMLImageElement[] | null>>} */
+const fighterPending = new Map();
 
 export function normalizeBattleAnim(value) {
   if (MODES.has(value)) return value;
@@ -117,6 +119,7 @@ export function hasFighterFrames(speciesId) {
 export async function loadFighterFrames(speciesId, { loader } = {}) {
   if (!speciesId) return null;
   if (fighterCache.has(speciesId)) return fighterCache.get(speciesId);
+  if (fighterPending.has(speciesId)) return fighterPending.get(speciesId);
 
   const loadOne = loader || ((url) => new Promise((resolve, reject) => {
     const img = new Image();
@@ -125,21 +128,32 @@ export async function loadFighterFrames(speciesId, { loader } = {}) {
     img.src = `${url}?v=${FIGHTER_ASSET_VER}`;
   }));
 
-  try {
-    const imgs = [];
-    for (const url of fighterFrameUrls(speciesId)) {
-      imgs.push(await loadOne(url));
+  const pending = (async () => {
+    try {
+      const imgs = await Promise.all(fighterFrameUrls(speciesId).map((url) => loadOne(url)));
+      fighterCache.set(speciesId, imgs);
+      return imgs;
+    } catch {
+      fighterCache.set(speciesId, null);
+      return null;
+    } finally {
+      fighterPending.delete(speciesId);
     }
-    fighterCache.set(speciesId, imgs);
-    return imgs;
-  } catch {
-    fighterCache.set(speciesId, null);
-    return null;
-  }
+  })();
+
+  fighterPending.set(speciesId, pending);
+  return pending;
+}
+
+/** Warm the fighter-frame cache for every unique species id (parallel per species). */
+export function preloadFighterFrames(speciesIds, opts) {
+  const ids = [...new Set((speciesIds || []).filter(Boolean))];
+  return Promise.all(ids.map((id) => loadFighterFrames(id, opts)));
 }
 
 export function clearFighterFrameCache() {
   fighterCache.clear();
+  fighterPending.clear();
 }
 
 function mainSpriteImg(wrapEl) {
@@ -232,6 +246,63 @@ export async function playHit({
 
   await playBurst(defenderEl, moveType);
   return { played: m === 'heavy' ? 'medium-fallback' : 'medium' };
+}
+
+const NUM_FLOAT_MS = 720;
+const NUM_STILL_MS = 420;
+
+/**
+ * Class tokens for a floating combat number.
+ * heal wins over damage styling. crit stacks with super/resist.
+ */
+export function damageNumberVariant({ typeMult = 1, crit = false, heal = false } = {}) {
+  if (heal) return 'heal';
+  let base = 'normal';
+  if (typeMult > 1) base = 'super';
+  else if (typeMult < 1) base = 'resist';
+  return crit ? `${base} crit` : base;
+}
+
+/**
+ * Pop a damage or heal number above anchorEl. Does not block the caller.
+ * enabled false, missing anchor, or amount <= 0 shows nothing.
+ * Reduced motion keeps the number in place, then fades it.
+ */
+export function playDamageNumber(anchorEl, {
+  amount,
+  typeMult = 1,
+  crit = false,
+  heal = false,
+  enabled = true,
+  reducedMotion = prefersReducedMotion(),
+} = {}) {
+  const n = Math.floor(Number(amount) || 0);
+  if (!enabled || !anchorEl || n <= 0) return false;
+
+  const el = document.createElement('span');
+  el.className = `fx-num ${damageNumberVariant({ typeMult, crit, heal })}`;
+  if (reducedMotion) el.className += ' still';
+  const stack = anchorEl.querySelectorAll('.fx-num').length;
+  el.style.setProperty('--fx-num-shift', `${((stack % 3) - 1) * 16}px`);
+
+  const value = document.createElement('span');
+  value.className = 'fx-num-value';
+  value.textContent = heal ? `+${n}` : String(n);
+  el.appendChild(value);
+  if (crit && !heal) {
+    const tag = document.createElement('span');
+    tag.className = 'fx-num-tag';
+    tag.textContent = '暴击';
+    el.appendChild(tag);
+  }
+
+  anchorEl.appendChild(el);
+  const remove = () => {
+    el.remove();
+  };
+  el.addEventListener('animationend', remove, { once: true });
+  setTimeout(remove, reducedMotion ? NUM_STILL_MS : NUM_FLOAT_MS);
+  return true;
 }
 
 export async function loadHeavyFrames() {

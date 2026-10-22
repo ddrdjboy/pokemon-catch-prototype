@@ -10,6 +10,8 @@ const BGM = {
 };
 
 const SFX_KEYS = ['fire', 'water', 'electric', 'grass', 'rock', 'psychic', 'dragon', 'normal'];
+const CATCH_SUCCESS_KEY = 'catch_success';
+const ALL_SFX_KEYS = [...SFX_KEYS, CATCH_SUCCESS_KEY];
 
 const SFX_BUCKETS = {
   fire: 'fire',
@@ -42,6 +44,8 @@ const sfxEls = new Map();
 let unlocked = false;
 let currentBgmKey = null;
 let pausedByVisibility = false;
+let musicEnabled = true;
+let sfxEnabled = true;
 
 export function selectBattleTrack({ rift, playerLevel, foeLevel }) {
   if (rift) return 'b2';
@@ -97,15 +101,39 @@ function setBgmSrc(key, url) {
   el.src = url;
   el.loop = true;
   el.volume = BGM_VOLUME;
-  if (unlocked) safePlay(el);
+  if (unlocked && musicEnabled) safePlay(el);
+  else if (el && !musicEnabled) el.pause();
+}
+
+export function setMusicEnabled(on) {
+  musicEnabled = !!on;
+  const el = ensureBgm();
+  if (!el) return;
+  if (!musicEnabled) {
+    el.pause();
+    return;
+  }
+  if (unlocked && el.src) safePlay(el);
+}
+
+export function setSfxEnabled(on) {
+  sfxEnabled = !!on;
+}
+
+export function isMusicEnabled() {
+  return musicEnabled;
+}
+
+export function isSfxEnabled() {
+  return sfxEnabled;
 }
 
 export function unlockAudio() {
   if (unlocked) return;
   unlocked = true;
   const el = ensureBgm();
-  if (el && el.src) safePlay(el);
-  for (const key of SFX_KEYS) ensureSfx(key);
+  if (el && el.src && musicEnabled) safePlay(el);
+  for (const key of ALL_SFX_KEYS) ensureSfx(key);
 }
 
 export function playExploreBgm() {
@@ -117,9 +145,8 @@ export function playBattleBgm({ rift, playerLevel, foeLevel }) {
   setBgmSrc(track, battleTrackUrl(track));
 }
 
-export function playAttackSfx(moveType) {
-  if (!unlocked) return;
-  const key = sfxKeyForMoveType(moveType);
+function playSfxKey(key) {
+  if (!unlocked || !sfxEnabled) return;
   const el = ensureSfx(key);
   if (!el) return;
   try {
@@ -130,6 +157,15 @@ export function playAttackSfx(moveType) {
   safePlay(el);
 }
 
+export function playAttackSfx(moveType) {
+  playSfxKey(sfxKeyForMoveType(moveType));
+}
+
+/** One-shot when a catch succeeds (“咔哒！抓住了！”). */
+export function playCatchSuccessSfx() {
+  playSfxKey(CATCH_SUCCESS_KEY);
+}
+
 export function pauseBgmForHidden() {
   const el = ensureBgm();
   if (!el || el.paused) return;
@@ -138,7 +174,7 @@ export function pauseBgmForHidden() {
 }
 
 export function resumeBgmIfNeeded() {
-  if (!pausedByVisibility || !unlocked) return;
+  if (!pausedByVisibility || !unlocked || !musicEnabled) return;
   pausedByVisibility = false;
   safePlay(ensureBgm());
 }

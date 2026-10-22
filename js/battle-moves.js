@@ -47,6 +47,38 @@ export function applyMoveEffect(mon, move) {
   };
 }
 
+export function chooseFoeMove(attacker, defender, rng = Math.random) {
+  const sp = SPECIES[attacker.speciesId];
+  const kit = speciesMoveList(sp);
+  const primary = kit[0];
+  if (kit.length < 2) return primary;
+
+  const attacks = kit.filter((m) => !m.effect);
+  const coverage = attacks[1] || null;
+  const heal = kit.find((m) => m.effect === 'heal');
+  const buffAtk = kit.find((m) => m.effect === 'atk');
+  const buffDef = kit.find((m) => m.effect === 'def');
+
+  if (!attacker.usedUtility && heal && attacker.hp / attacker.maxHp <= 0.4) return heal;
+
+  if (coverage && defender) {
+    const covMult = typeMultiplier(coverage.type, SPECIES[defender.speciesId].type);
+    const priMult = typeMultiplier(primary.type, SPECIES[defender.speciesId].type);
+    if (covMult > 1 && !(priMult > 1)) return coverage;
+  }
+
+  // Use the high quartile so tests that pass rng => 0 (crit / first index) do not always buff.
+  if (!attacker.usedUtility && (buffAtk || buffDef) && rng() >= 0.75) {
+    if (buffAtk && buffDef) {
+      const base = sp.base;
+      return base.atk >= base.def ? buffAtk : buffDef;
+    }
+    return buffAtk || buffDef;
+  }
+
+  return primary;
+}
+
 function livingOn(sideArr, sideName) {
   return sideArr
     .map((mon, index) => ({ side: sideName, index, mon }))
@@ -76,7 +108,6 @@ export function resolveMoveTargets(actor, cmd, players, foes) {
     const preferred = list.find((t) => t.index === cmd.targetIndex) || list[0];
     return preferred ? [preferred] : [];
   }
-  // foe (default)
   const list = livingOn(enemies, enemySide);
   const preferred = list.find((t) => t.index === cmd.targetIndex) || list[0];
   return preferred ? [preferred] : [];

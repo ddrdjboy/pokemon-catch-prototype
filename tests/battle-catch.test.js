@@ -1,30 +1,55 @@
 import {
-  calcDamage, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
+  calcDamage, CRIT_MULT, CRIT_RATE, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
   resolveFoeOnlyTurn, resolveSquadItemTurn, whoGoesFirstDeterministic,
 } from '../js/battle.js';
 import {
   normalizeBattleAnim,
   effectiveBattleAnim,
+  damageNumberVariant,
   typeTint,
   playHit,
   hasFighterFrames,
   loadFighterFrames,
+  preloadFighterFrames,
   clearFighterFrameCache,
   playFighterFrameStrip,
 } from '../js/battle-fx.js';
 import { catchChance, catchOutlook, shakeCount, velocityFromDrag, simulateThrow } from '../js/catch.js';
 import {
+  ITEMS, HEAL_ITEMS, emptyItems, emptyHealItems, applyItem, applyHealItem,
+} from '../js/items.js';
+import {
   createPokemon, createRiftAllies, typeMultiplier, sellPrice, sellPokemon, PARTY_CAP, ACTIVE_CAP,
   activeParty, movePartyMember, moveWithinZone, recallToBag, sendToActive, BALLS,
-  HEAL_ITEMS, applyHealItem, initialPlayerState,
+  initialPlayerState,
   encounterLevels, rollEncounter, syncEncounters, trimParty, SHINY_RATE_WITH_CHARM,
   partyMaxLevel, partyOverLevelCount, riftFruitDrop, trySpendRiftFruit, trySpendTwinKey,
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
   TWIN_UNLOCK_LEVEL, TWIN_UNLOCK_COUNT, TWIN_KEY_COST, TWIN_KEY, TWIN_BOSS_LEVEL,
+  canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
+import { partyIndividualView } from '../js/party-detail.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
-import { selectBattleTrack, sfxKeyForMoveType } from '../js/audio.js';
+import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
+import {
+  generateMazeFloor,
+  createMazeRun,
+  stepMaze,
+  findMazePath,
+  removeRoamer,
+  markFloorBossDefeated,
+  advanceMazeFloor,
+  buildFloorBossEncounter,
+  SPIRIT_HALL_BOSS_BY_FLOOR,
+} from '../js/maze.js';
+import {
+  spriteWrapClassName,
+  partyCardClassName,
+  markerClassName,
+  bossAuraEllipse,
+} from '../js/boss-ui.js';
+import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
 
 let passed = 0;
 let failed = 0;
@@ -49,14 +74,32 @@ assert(typeMultiplier('fire', 'water') === 0.5, 'fire < water');
 console.log('damage');
 const atk = createPokemon('scorbunny', 5);
 const def = createPokemon('bulbasaur', 5);
-const { damage, typeMult } = calcDamage(atk, def, { power: 40, type: 'fire' });
+const noCrit = () => 1;
+const alwaysCrit = () => 0;
+const move40 = { power: 40, type: 'fire' };
+const { damage, typeMult, crit } = calcDamage(atk, def, move40, noCrit);
 assert(typeMult === 1.5, 'super effective mult');
+assert(crit === false, 'rng 1 is not a crit');
 assert(damage === Math.max(1, Math.floor((atk.atk * 40) / def.def * 1.5)), 'damage formula');
 
 const rock = createPokemon('geodude', 5);
-const { damage: d2, typeMult: m2 } = calcDamage(atk, rock, { power: 40, type: 'fire' });
+const { damage: d2, typeMult: m2 } = calcDamage(atk, rock, move40, noCrit);
 assert(m2 === 0.5, 'fire vs rock resisted');
 assert(d2 >= 1, 'min damage 1');
+
+const critHit = calcDamage(atk, def, move40, alwaysCrit);
+assert(CRIT_RATE === 1 / 16, 'crit rate is 1/16');
+assert(critHit.crit === true, 'rng 0 is a crit');
+assert(
+  critHit.damage === Math.max(1, Math.floor((atk.atk * 40) / def.def * 1.5 * CRIT_MULT)),
+  'crit applies 1.5 after type multiplier',
+);
+assert(damageNumberVariant({ typeMult: 1 }) === 'normal', 'normal number');
+assert(damageNumberVariant({ typeMult: 1.5 }) === 'super', 'super effective number');
+assert(damageNumberVariant({ typeMult: 0.5 }) === 'resist', 'resisted number');
+assert(damageNumberVariant({ typeMult: 1, crit: true }) === 'normal crit', 'crit number');
+assert(damageNumberVariant({ typeMult: 1.5, crit: true }) === 'super crit', 'crit super number');
+assert(damageNumberVariant({ heal: true, crit: true }) === 'heal', 'heal number ignores crit');
 
 console.log('speed');
 const fast = { spd: 70 };
@@ -302,7 +345,7 @@ for (const id of regionIds) {
     known.add(sid);
   }
 }
-assert(Object.keys(MAPS).length === 21, '21 maps total');
+assert(Object.keys(MAPS).length === 22, '22 maps total');
 
 console.log('rift raid');
 assert(SPECIES.mega_rayquaza?.name === '超级裂空座' && SPECIES.mega_rayquaza.mega, 'mega rayquaza');
@@ -322,15 +365,17 @@ const squadPlayer = createPokemon('mega_charizard', 100);
 const squadAllies = createRiftAllies();
 const squadFoe = createPokemon('mega_rayquaza', 200, { shiny: true, boss: true });
 const kit = SPECIES.mega_rayquaza.moves;
-assert(kit.length === 4 && kit.some((move) => move.aoe) && kit.every((move) => move.power >= 45), 'rayquaza has a heavy kit');
+assert(kit.length === 3 && kit.every((move) => !move.aoe), 'rayquaza kit is three single-target moves');
+assert(kit[2].effect === 'atk' && kit[2].power === 0, 'rayquaza utility is not a damaging move');
 assert(Math.max(...kit.map((move) => move.power)) >= 140, 'signature move is much stronger');
 const firstRaidTurn = resolveSquadTurn(squadPlayer, squadAllies, squadFoe, () => 0);
 const swings = firstRaidTurn.logs.filter((line) => line.side === 'player' || line.side === 'ally');
 assert(swings.length === 4, 'player and three computers all attack');
 const foeLogs = firstRaidTurn.logs.filter((line) => line.side === 'foe');
-assert(foeLogs.some((line) => line.text.includes('龙星群')), 'opens with 龙星群');
-assert(foeLogs.filter((line) => line.text.includes('空气斩')).length >= 3, '空气斩 hits the standing squad');
-const heavy = foeLogs.find((line) => line.text.includes('龙星群'));
+assert(foeLogs.some((line) => line.text.includes('飞冲升天')), 'opens with 飞冲升天');
+assert(foeLogs.every((line) => !line.text.includes('空气斩')), '空气斩 is no longer cast');
+assert(foeLogs.every((line) => !line.text.includes('龙之舞')), 'utility move is not cast');
+const heavy = foeLogs.find((line) => line.text.includes('飞冲升天'));
 const playerHp = squadPlayer.maxHp;
 assert(heavy.damage >= playerHp * 0.8, 'heavy skill nearly KOs a level 100 mega');
 function raidToEnd(level) {
@@ -346,7 +391,14 @@ function raidToEnd(level) {
       fighter = createPokemon('mega_charizard', level);
       backups -= 1;
     }
-    const turn = resolveSquadTurn(fighter, allies, raidBoss, () => (roll++ % 4) / 4);
+    const turn = resolveSquadTurn(
+      fighter,
+      allies,
+      raidBoss,
+      () => (roll++ % 4) / 4,
+      SPECIES.mega_charizard.move,
+      SPECIES.mega_rayquaza.moves[0],
+    );
     fighter = turn.player;
     allies = turn.allies;
     raidBoss = turn.foe;
@@ -357,11 +409,11 @@ function raidToEnd(level) {
   }
   return { raidResult, rounds, bossHp: raidBoss.hp };
 }
-const fresh = raidToEnd(100);
-assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 100 squad falls before the boss');
-assert(fresh.bossHp < 1600, 'level 100 squad still cuts deep into the boss');
-const ready = raidToEnd(140);
-assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 140 squad beats rayquaza (${ready.rounds} rounds)`);
+const fresh = raidToEnd(90);
+assert(fresh.raidResult !== 'win' && fresh.bossHp > 0, 'level 90 squad falls before the boss');
+assert(fresh.bossHp < 1600, 'level 90 squad still cuts deep into the boss');
+const ready = raidToEnd(100);
+assert(ready.raidResult === 'win' && ready.rounds <= 20, `level 100 squad beats rayquaza (${ready.rounds} rounds)`);
 
 console.log('twin towers');
 assert(MAPS.twin_towers?.twin && MAPS.twin_towers.encounters.length === 4, 'twin towers has 4 dual fights');
@@ -385,6 +437,17 @@ const dualFoes = heroes.foes.map((f) => ({ ...f }));
 const dualTurn = resolveDualTurn(dualPlayers, dualFoes, () => 0);
 assert(dualTurn.logs.length >= 2, 'dual turn has multiple actions');
 assert(dualTurn.players.length === 2 && dualTurn.foes.length === 2, 'dual turn keeps both sides');
+
+console.log('spirit hall unlock');
+assert(SPECIES.eternatus?.name === '伊裴尔达尔', 'eternatus species');
+assert(SPECIES.xerneas?.name === '哲尔尼亚斯', 'xerneas species');
+assert(SPECIES.zygarde?.name === '基格尔德', 'zygarde species');
+assert(MAPS.spirit_hall?.spiritHall === true && MAPS.spirit_hall.name === '灵堂', 'spirit hall map');
+assert(canEnterSpiritHall({ twinCleared: false }).ok === false, 'locked without twin clear');
+assert(canEnterSpiritHall({ twinCleared: true }).ok === true, 'open after twin clear');
+const init = initialPlayerState();
+assert(init.twinCleared === false, 'fresh save not cleared');
+assert(SPIRIT_HALL_BOSS_LEVELS[1] === 225 && SPIRIT_HALL_BOSS_LEVELS[2] === 250 && SPIRIT_HALL_BOSS_LEVELS[3] === 300, 'boss levels table');
 
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);
@@ -430,6 +493,56 @@ const missing = await loadFighterFrames('charmander', {
 });
 assert(missing === null, 'fighter frames missing → null');
 assert(!hasFighterFrames('charmander'), 'failed load clears hasFighterFrames');
+
+console.log('fighter frame parallel + preload');
+clearFighterFrameCache();
+{
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const parallelFrames = await loadFighterFrames('parallel_mon', {
+    loader: () => new Promise((resolve) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      setTimeout(() => {
+        inFlight -= 1;
+        resolve({ src: 'ok' });
+      }, 20);
+    }),
+  });
+  assert(parallelFrames?.length === 5, 'parallel load returns 5 frames');
+  assert(maxInFlight === 5, 'loads all five frames concurrently');
+}
+clearFighterFrameCache();
+{
+  let starts = 0;
+  const shared = loadFighterFrames('inflight_mon', {
+    loader: () => new Promise((resolve) => {
+      starts += 1;
+      setTimeout(() => resolve({ src: 'ok' }), 30);
+    }),
+  });
+  const again = loadFighterFrames('inflight_mon', {
+    loader: () => new Promise((resolve) => {
+      starts += 1;
+      setTimeout(() => resolve({ src: 'ok' }), 30);
+    }),
+  });
+  await Promise.all([shared, again]);
+  assert(starts === 5, 'in-flight load is shared across callers');
+}
+clearFighterFrameCache();
+{
+  const startedSpecies = new Set();
+  await preloadFighterFrames(['alpha', 'beta', 'alpha'], {
+    loader: (url) => {
+      const species = String(url).split('/')[3];
+      startedSpecies.add(species);
+      return Promise.resolve({ src: url });
+    },
+  });
+  assert(startedSpecies.has('alpha') && startedSpecies.has('beta'), 'preload starts both species');
+  assert(hasFighterFrames('alpha') && hasFighterFrames('beta'), 'preload caches both species');
+}
 const fallback = await playHit({
   side: 'player',
   attackerSpeciesId: 'charmander',
@@ -465,6 +578,7 @@ assert(sfxKeyForMoveType('ghost') === 'psychic', 'ghost→psychic');
 assert(sfxKeyForMoveType('flying') === 'dragon', 'flying→dragon');
 assert(sfxKeyForMoveType('fighting') === 'normal', 'fighting→normal');
 assert(sfxKeyForMoveType('unknown') === 'normal', 'unknown→normal');
+assert(typeof playCatchSuccessSfx === 'function', 'catch success sfx export');
 
 console.log('pokedex anim preview');
 clearFighterFrameCache();
@@ -518,6 +632,55 @@ assert(applyHealItem(fainted, 'potion') === 0 && fainted.hp === 0, 'cannot heal 
 const topped = createPokemon('scorbunny', 5);
 assert(applyHealItem(topped, 'potion') === 0 && topped.hp === topped.maxHp, 'no heal when full');
 
+console.log('unified items');
+assert(ITEMS.expCandyS.effect === 'xp' && ITEMS.expCandyS.value === 100 && ITEMS.expCandyS.price === 200, 'candy S');
+assert(ITEMS.expCandyM.value === 400 && ITEMS.expCandyM.price === 700, 'candy M');
+assert(ITEMS.expCandyL.value === 1000 && ITEMS.expCandyL.price === 1600, 'candy L');
+assert(ITEMS.expCandyXL.value === 2500 && ITEMS.expCandyXL.price === 3500, 'candy XL');
+assert(ITEMS.expCandyXXL.value === 6000 && ITEMS.expCandyXXL.price === 8000, 'candy XXL');
+assert(ITEMS.vitalityShard.effect === 'revive' && ITEMS.vitalityShard.value === 0.5 && ITEMS.vitalityShard.price === 1200, 'shard');
+assert(ITEMS.vitalityBlock.value === 1 && ITEMS.vitalityBlock.price === 2800, 'block');
+assert(HEAL_ITEMS.potion.heal === 20 && HEAL_ITEMS.potion.price === 50, 'potion alias');
+
+const stock = emptyItems();
+for (const id of Object.keys(ITEMS)) {
+  assert(stock[id] === 0, `empty ${id}`);
+}
+const starter = initialPlayerState().items;
+assert(starter.expCandyS === 0 && starter.vitalityShard === 0, 'new game has new item keys');
+
+{
+  const hurtUni = createPokemon('scorbunny', 5);
+  hurtUni.hp = Math.max(1, hurtUni.maxHp - 30);
+  const healOk = applyItem(hurtUni, 'potion');
+  assert(healOk.ok && healOk.kind === 'heal' && healOk.amount === 20, 'applyItem heal');
+  assert(applyHealItem(hurtUni, 'potion') >= 0, 'applyHealItem still works');
+
+  const faintedUni = createPokemon('scorbunny', 5);
+  faintedUni.hp = 0;
+  assert(applyItem(faintedUni, 'potion').ok === false, 'no heal fainted');
+  const shard = applyItem(faintedUni, 'vitalityShard');
+  assert(shard.ok && shard.kind === 'revive', 'shard revives');
+  assert(faintedUni.hp === Math.max(1, Math.floor(faintedUni.maxHp * 0.5)), 'shard 50%');
+  const living = createPokemon('scorbunny', 5);
+  assert(applyItem(living, 'vitalityBlock').ok === false, 'no revive living');
+  living.hp = 0;
+  const block = applyItem(living, 'vitalityBlock');
+  assert(block.ok && living.hp === living.maxHp, 'block full');
+
+  const pup = createPokemon('scorbunny', 5);
+  pup.exp = 0;
+  const beforeLevel = pup.level;
+  const candy = applyItem(pup, 'expCandyS');
+  assert(candy.ok && candy.kind === 'xp' && candy.amount === 100, 'candy grants 100');
+  assert(pup.exp === 100 || pup.level > beforeLevel, 'exp applied');
+  const down = createPokemon('scorbunny', 5);
+  down.hp = 0;
+  down.exp = 0;
+  applyItem(down, 'expCandyM');
+  assert(down.hp === 0, 'fainted stays 0 after candy');
+}
+
 console.log('item turn foe only');
 const healTurnPlayer = createPokemon('scorbunny', 10);
 healTurnPlayer.hp = Math.floor(healTurnPlayer.maxHp / 2);
@@ -558,6 +721,195 @@ assert(
   dualItem.players.some((p, i) => p.hp < dualItemPlayers[i].hp),
   'foes still attack on dual item turn',
 );
+
+console.log('spirit hall maze');
+const floor1 = generateMazeFloor({ floor: 1, rng: () => 0.42 });
+assert(floor1.grid.length >= 15 && floor1.grid[0].length >= 15, 'grid is at least 15x15');
+const flat = floor1.grid.flat();
+assert(flat.includes('floor') && flat.includes('stairs') && flat.includes('wall'), 'has wall/floor/stairs');
+function flood(grid, sx, sy) {
+  const h = grid.length, w = grid[0].length;
+  const seen = new Set();
+  const q = [[sx, sy]];
+  seen.add(`${sx},${sy}`);
+  while (q.length) {
+    const [x, y] = q.pop();
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      if (grid[ny][nx] === 'wall') continue;
+      const k = `${nx},${ny}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      q.push([nx, ny]);
+    }
+  }
+  return seen;
+}
+const reach = flood(floor1.grid, floor1.spawn.x, floor1.spawn.y);
+assert(reach.has(`${floor1.stairs.x},${floor1.stairs.y}`), 'spawn reaches stairs');
+assert(floor1.roamers.length >= 6 && floor1.roamers.length <= 10, '6-10 roamers');
+
+const run = createMazeRun({ floor: 1, rng: () => 0.3 });
+const wallStep = (() => {
+  const r = createMazeRun({ floor: 1, rng: () => 0.11 });
+  const { x, y } = r.player;
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const tx = x + dx, ty = y + dy;
+    if (r.grid[ty]?.[tx] === 'wall') {
+      const out = stepMaze(r, dx, dy);
+      return out.event === null && out.run.player.x === x && out.run.player.y === y;
+    }
+  }
+  return true;
+})();
+assert(wallStep, 'cannot walk into walls');
+
+{
+  const walled = {
+    player: { x: 1, y: 1 },
+    grid: [
+      ['wall', 'wall', 'wall', 'wall', 'wall'],
+      ['wall', 'floor', 'wall', 'floor', 'wall'],
+      ['wall', 'floor', 'floor', 'floor', 'wall'],
+      ['wall', 'wall', 'wall', 'wall', 'wall'],
+    ],
+  };
+  const around = findMazePath(walled, 3, 1);
+  assert(around.length === 4, 'path goes around a wall');
+  assert(around[0].x === 1 && around[0].y === 2, 'first step leaves the wall gap');
+  assert(around[3].x === 3 && around[3].y === 1, 'path ends on the target');
+  assert(findMazePath(walled, 2, 1).length === 0, 'wall target is empty');
+  assert(findMazePath(walled, 1, 1).length === 0, 'current cell is empty');
+}
+
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].speciesId === 'eternatus' && SPIRIT_HALL_BOSS_BY_FLOOR[1].level === 225, 'floor1 boss');
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].speciesId === 'xerneas' && SPIRIT_HALL_BOSS_BY_FLOOR[2].level === 250, 'floor2 boss');
+assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].speciesId === 'zygarde' && SPIRIT_HALL_BOSS_BY_FLOOR[3].level === 300, 'floor3 boss');
+
+console.log('spirit hall flow helpers');
+{
+  let run = createMazeRun({ floor: 1, rng: () => 0.5 });
+  const firstId = run.roamers[0]?.id;
+  if (firstId) {
+    run = removeRoamer(run, firstId);
+    assert(!run.roamers.find((r) => r.id === firstId), 'remove roamer works');
+  }
+  run = markFloorBossDefeated(run);
+  assert(run.floorBossDefeated, 'boss flagged');
+  const f2 = advanceMazeFloor(run, () => 0.2);
+  assert(f2 && f2.floor === 2 && f2.floorBossDefeated === false, 'advance to floor 2');
+  const f3 = advanceMazeFloor({ ...f2, floor: 2 }, () => 0.2);
+  assert(f3 && f3.floor === 3, 'floor 3');
+  assert(advanceMazeFloor({ ...f3, floor: 3 }) === null, 'no floor 4');
+
+  const bossEnc = buildFloorBossEncounter(3);
+  assert(bossEnc.speciesId === 'zygarde' && bossEnc.level === 300 && bossEnc.boss && bossEnc.shiny, 'zygarde enc');
+
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[1].level === SPIRIT_HALL_BOSS_LEVELS[1], 'floor1 level sync');
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[2].level === SPIRIT_HALL_BOSS_LEVELS[2], 'floor2 level sync');
+  assert(SPIRIT_HALL_BOSS_BY_FLOOR[3].level === SPIRIT_HALL_BOSS_LEVELS[3], 'floor3 level sync');
+
+  assert(MAPS.spirit_hall.encounters.length === 0, 'spirit hall has no marker encounters');
+}
+
+console.log('spirit hall minimap');
+{
+  const ops = [];
+  const ctx = {
+    canvas: { width: 0, height: 0 },
+    fillStyle: '',
+    clearRect(...a) { ops.push(['clear', ...a]); },
+    fillRect(...a) { ops.push(['fill', this.fillStyle, ...a]); },
+  };
+  const run = {
+    grid: [
+      ['wall', 'wall', 'wall'],
+      ['wall', 'floor', 'stairs'],
+      ['wall', 'wall', 'wall'],
+    ],
+    player: { x: 1, y: 1 },
+    stairs: { x: 2, y: 1 },
+  };
+  paintMazeMinimap(ctx, run, 90);
+  assert(ctx.canvas.width === 90 && ctx.canvas.height === 90, 'sets canvas size');
+  assert(ops.some((o) => o[0] === 'clear'), 'clears canvas');
+  assert(ops.some((o) => o[0] === 'fill' && o[1] === '#ffd54f'), 'paints stairs gold');
+  assert(ops.some((o) => o[0] === 'fill' && o[1] === '#4fc3f7'), 'paints player cyan');
+  assert(ops.filter((o) => o[0] === 'fill' && o[1] === '#2a3340').length >= 7, 'paints walls');
+  assert(paintMazeMinimap(ctx, null) === false, 'null run is no-op');
+  assert(MAZE_MINIMAP_SIZE === 104, 'default size constant');
+}
+
+console.log('\nparty individual view');
+{
+  const view = partyIndividualView({
+    speciesId: 'bulbasaur',
+    level: 5,
+    hp: 12,
+    maxHp: 20,
+    atk: 11,
+    def: 10,
+    spd: 9,
+    exp: 4,
+    shiny: true,
+  });
+  assert(view.level === 5, 'level');
+  assert(view.hpText === '12/20', 'hp text');
+  assert(view.atk === 11 && view.def === 10 && view.spd === 9, 'combat stats');
+  assert(view.expText === `4/${xpToNext(5)}`, 'exp toward next level');
+  assert(view.shiny === true && view.fainted === false, 'shiny not fainted');
+}
+{
+  const view = partyIndividualView({
+    speciesId: 'pikachu',
+    level: 8,
+    hp: 0,
+    maxHp: 30,
+    atk: 1,
+    def: 1,
+    spd: 1,
+  });
+  assert(view.expText === `0/${xpToNext(8)}`, 'missing exp counts as 0');
+  assert(view.fainted === true && view.shiny === false, 'fainted not shiny');
+}
+assert(partyIndividualView(null) === null, 'null mon');
+
+console.log('boss ui helpers');
+assert(spriteWrapClassName({}) === 'sprite-wrap', 'plain sprite wrap');
+assert(spriteWrapClassName({ shiny: true }) === 'sprite-wrap shiny', 'shiny wrap');
+assert(spriteWrapClassName({ boss: true }) === 'sprite-wrap boss', 'boss wrap');
+assert(
+  spriteWrapClassName({ shiny: true, boss: true }) === 'sprite-wrap shiny boss',
+  'shiny boss wrap',
+);
+
+assert(partyCardClassName({}) === 'party-card', 'plain party card');
+assert(
+  partyCardClassName({ selectable: true, shiny: true, boss: true })
+    === 'party-card selectable shiny boss',
+  'selectable shiny boss card',
+);
+assert(
+  partyCardClassName({ selectable: true, selected: true, boss: true })
+    === 'party-card selectable selected boss',
+  'selected boss card',
+);
+
+assert(
+  markerClassName({ kind: 'wild', boss: true }) === 'marker wild boss',
+  'boss marker',
+);
+assert(
+  markerClassName({ kind: 'trainer', shiny: true, boss: true, cleared: true })
+    === 'marker trainer shiny boss cleared',
+  'shiny boss cleared trainer marker',
+);
+
+const aura = bossAuraEllipse({ x: 100, y: 80, size: 112 });
+assert(aura.cx === 100 && aura.cy === 80, 'aura center');
+assert(aura.rx === 112 * 0.55 && aura.ry === 112 * 0.48, 'aura radii');
+assert(aura.color === '#ff6b6b' && aura.lineWidth === 2, 'aura stroke style');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -4,18 +4,25 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=nozoom1" />
+<link rel="stylesheet" href="css/game.css?v=minimap1" />
   <script type="importmap">
   {
     "imports": {
-      "/js/game.js": "/js/game.js?v=nozoom1",
-      "/js/audio.js": "/js/audio.js?v=audio1",
-      "/js/data.js": "/js/data.js?v=tile1",
-      "/js/battle.js": "/js/battle.js?v=heal2",
-      "/js/battle-fx.js": "/js/battle-fx.js?v=battlefx2",
-      "/js/catch.js": "/js/catch.js?v=rift1",
-      "/js/generated-content.js": "/js/generated-content.js?v=rift1",
-      "/js/region-content.js": "/js/region-content.js?v=rift1"
+      "./js/game.js": "./js/game.js?v=minimap1",
+      "./js/items.js": "./js/items.js?v=minimap1",
+      "./js/audio.js": "./js/audio.js?v=minimap1",
+      "./js/data.js": "./js/data.js?v=minimap1",
+      "./js/battle.js": "./js/battle.js?v=minimap1",
+      "./js/battle-moves.js": "./js/battle-moves.js?v=minimap1",
+      "./js/battle-fx.js": "./js/battle-fx.js?v=minimap1",
+      "./js/catch.js": "./js/catch.js?v=minimap1",
+      "./js/final-move-kits.js": "./js/final-move-kits.js?v=minimap1",
+      "./js/generated-content.js": "./js/generated-content.js?v=minimap1",
+      "./js/region-content.js": "./js/region-content.js?v=minimap1",
+      "./js/maze.js": "./js/maze.js?v=minimap1",
+      "./js/maze-minimap.js": "./js/maze-minimap.js?v=minimap1",
+      "./js/party-detail.js": "./js/party-detail.js?v=minimap1",
+      "./js/level.js": "./js/level.js?v=minimap1"
     }
   }
   </script>
@@ -27,11 +34,14 @@
       <div class="status">
         <button id="btn-dex" type="button">图鉴</button>
         <button id="btn-shop" type="button">商店</button>
-        <button id="btn-battle-anim" type="button" title="战斗动画：重度目前支持小火龙/炎兔儿打斗帧">动画 · 轻量</button>
-        <span id="coin-display">金币 300</span>
-        <span id="fruit-display">异次元果 0</span>
-        <span id="twin-key-display">双子钥匙 0</span>
-        <span id="charm-display" class="hidden">闪耀护符</span>
+        <button id="btn-items" type="button">道具</button>
+        <button id="btn-settings" type="button">设置</button>
+        <span class="status-metrics" aria-label="资源">
+          <span id="coin-display" class="status-metric" title="金币"><span class="coin-icon" aria-hidden="true"></span>300</span>
+          <span id="fruit-display" class="status-metric" title="异次元果">🍇 0</span>
+          <span id="twin-key-display" class="status-metric" title="双子钥匙">🔑 0</span>
+          <span id="charm-display" class="status-metric hidden" title="闪耀护符">✨</span>
+        </span>
       </div>
     </header>
 
@@ -49,8 +59,10 @@
         </div>
       </div>
       <div class="panel split-pane party-pane" id="party-pane">
-        <h2 class="party-head">我的宝可梦 <span id="party-count">1/99</span></h2>
-        <p class="hint party-hint">点卡排序。前 6 出场；收回进背包，上场回前 6。</p>
+        <h2 class="party-head">
+          <span class="party-head-title">我的宝可梦 <span id="party-count">1/99</span></span>
+          <button id="btn-party-info" type="button" class="maze-info-btn" aria-label="队伍说明" title="队伍说明">i</button>
+        </h2>
         <div id="party-list" class="party-list"></div>
       </div>
     </section>
@@ -65,6 +77,29 @@
           <div id="map-markers"></div>
         </div>
         <p class="hint">点击训练家或野生宝可梦开始对战。野生战胜后可捕捉；训练家要打完全队，再选一只捕捉。</p>
+      </div>
+    </section>
+
+    <section id="screen-maze" class="screen hidden">
+      <div class="panel maze-panel">
+        <div class="maze-top">
+          <button id="btn-maze-exit" type="button">← 退出灵堂</button>
+          <h2 id="maze-title">灵堂 · 第 1 层</h2>
+          <button id="btn-maze-info" type="button" class="maze-info-btn" aria-label="玩法说明" title="玩法说明">i</button>
+        </div>
+        <div id="maze-viewport" class="maze-viewport" aria-label="迷宫卷轴">
+          <div id="maze-world" class="maze-world"></div>
+          <div class="maze-crosshair" aria-hidden="true"></div>
+          <canvas id="maze-minimap" class="maze-minimap" width="104" height="104" aria-hidden="true"></canvas>
+          <div id="maze-stick" class="maze-stick" aria-label="移动摇杆">
+            <span class="maze-stick-arrow n" aria-hidden="true"></span>
+            <span class="maze-stick-arrow e" aria-hidden="true"></span>
+            <span class="maze-stick-arrow s" aria-hidden="true"></span>
+            <span class="maze-stick-arrow w" aria-hidden="true"></span>
+            <div id="maze-stick-knob" class="maze-stick-knob"></div>
+          </div>
+          <div id="maze-toast" class="maze-toast hidden" role="status"></div>
+        </div>
       </div>
     </section>
 
@@ -116,24 +151,17 @@
             <div class="hp-bar"><div id="player-hp-1" class="hp-fill"></div></div>
           </div>
         </div>
-        <div id="battle-log" class="battle-log"></div>
         <p id="battle-cmd-hint" class="battle-cmd-hint hidden"></p>
-        <div class="row-actions">
-          <div id="move-buttons" class="move-buttons hidden"></div>
-          <button id="btn-attack" type="button" class="primary">攻击</button>
+        <p id="move-prompt" class="move-prompt hidden"></p>
+        <div id="battle-actions" class="battle-actions" data-layout="list">
+          <div id="move-buttons" class="move-buttons"></div>
+          <button id="btn-attack" type="button" class="primary hidden">继续</button>
           <button id="btn-switch-cmd" type="button" class="dual-cmd-only hidden">换人</button>
           <button id="btn-cmd-back" type="button" class="dual-cmd-only hidden">返回</button>
           <button id="btn-cmd-undo" type="button" class="dual-cmd-only hidden">重选上一只</button>
-          <button id="btn-item" type="button">道具</button>
-          <button id="btn-flee-battle" type="button">逃跑</button>
+          <button id="btn-flee-battle" class="flee-btn" type="button">逃跑</button>
         </div>
-        <div id="item-panel" class="item-panel hidden">
-          <div class="item-panel-head">
-            <span>选择道具</span>
-            <button id="btn-close-items" type="button">取消</button>
-          </div>
-          <div id="item-list" class="item-list"></div>
-        </div>
+        <div id="battle-log" class="battle-log"></div>
       </div>
     </section>
 
@@ -143,10 +171,6 @@
         <div class="catch-head">
           <h2>捕捉！</h2>
           <span id="catch-outlook" class="catch-outlook"></span>
-        </div>
-        <div id="catch-style" class="style-toggle" role="group" aria-label="捕捉方式">
-          <button type="button" data-style="flick">甩出</button>
-          <button type="button" data-style="sling">拉弓</button>
         </div>
         <p id="catch-info" class="hint">按住底部的球，朝宝可梦甩出。</p>
         <div id="ball-picker" class="ball-picker"></div>
@@ -178,6 +202,20 @@
       <button id="btn-close-shop" type="button">关闭</button>
     </div>
   </div>
+  <div id="items-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="items-title">
+    <div class="shop-dialog panel items-dialog">
+      <h2 id="items-title">道具</h2>
+      <div id="items-step-list">
+        <div id="items-list" class="item-list"></div>
+      </div>
+      <div id="items-step-target" class="hidden">
+        <p class="hint">选择宝可梦</p>
+        <div id="items-target-list" class="party-list"></div>
+      </div>
+      <button id="btn-close-items" type="button">关闭</button>
+    </div>
+  </div>
+  <div id="app-toast" class="app-toast hidden" role="status"></div>
   <div id="reset-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="reset-title">
     <div class="shop-dialog panel reset-dialog">
       <h2 id="reset-title">重新开始</h2>
@@ -188,6 +226,41 @@
       </div>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=nozoom1"></script>
+  <div id="settings-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="shop-dialog panel settings-dialog">
+      <h2 id="settings-title">设置</h2>
+      <div class="settings-list">
+        <div class="settings-row">
+          <span class="settings-label">战斗动画</span>
+          <button id="btn-battle-anim" type="button" title="战斗动画：重度目前支持小火龙/炎兔儿打斗帧">动画 · 轻量</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">伤害数字</span>
+          <button id="btn-damage-numbers" type="button">开</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">技能栏布局</span>
+          <button id="btn-move-layout" type="button" title="战斗底部技能栏样式">列表</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">捕捉方式</span>
+          <div id="catch-style" class="style-toggle" role="group" aria-label="捕捉方式">
+            <button type="button" data-style="flick">甩出</button>
+            <button type="button" data-style="sling">拉弓</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">音乐</span>
+          <button id="btn-music" type="button">开</button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">音效</span>
+          <button id="btn-sfx" type="button">开</button>
+        </div>
+      </div>
+      <button id="btn-close-settings" type="button">关闭</button>
+    </div>
+  </div>
+  <script type="module" src="js/game.js?v=minimap1"></script>
 </body>
 </html>

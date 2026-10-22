@@ -48,6 +48,7 @@ import {
   partyCardClassName,
   markerClassName,
   BOSS_OUTLINE_COLOR,
+  BOSS_OUTLINE_PX,
   bossOutlineOffsets,
 } from '../js/boss-ui.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from '../js/maze-minimap.js';
@@ -908,11 +909,12 @@ assert(
 );
 
 assert(BOSS_OUTLINE_COLOR === '#ff6b6b', 'outline color');
-const offs = bossOutlineOffsets(2);
+assert(BOSS_OUTLINE_PX === 0.5, 'outline thickness is 0.5px');
+const offs = bossOutlineOffsets();
 assert(offs.length === 8, '8 outline offsets');
-assert(offs.some(([x, y]) => x === -2 && y === 0), 'left offset');
-assert(offs.some(([x, y]) => x === 2 && y === 2), 'diagonal offset');
-assert(bossOutlineOffsets(0).every(([x, y]) => Math.abs(x) <= 1 && Math.abs(y) <= 1), 'min px is 1');
+assert(offs.some(([x, y]) => x === -0.5 && y === 0), 'left offset');
+assert(offs.some(([x, y]) => x === 0.5 && y === 0.5), 'diagonal offset');
+assert(bossOutlineOffsets(0)[0][0] === -0.5, 'zero px uses default 0.5');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

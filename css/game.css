@@ -309,6 +309,16 @@ body {
   #screen-select .split-pane.party-pane:last-child {
     flex: 1 1 0;
   }
+
+  /* Select-screen party: vertical list on desktop/iPad; mobile keeps horizontal rail */
+  #screen-select #party-list.party-list {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    padding-bottom: 0;
+    overscroll-behavior-x: auto;
+  }
 }
 
 .party-list {

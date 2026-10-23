@@ -1,5 +1,6 @@
 import { SPECIES, BALLS, BOSS_CATCH_MULT } from './data.js';
 import { paintBossSpriteOutline } from './boss-ui.js';
+import { assetUrl } from './assets.js';
 
 const GRACE = 12;
 const BALL_R = 14;
@@ -189,10 +190,10 @@ export function createCatchController(canvas, {
   function loadImages() {
     const sp = SPECIES[targetPokemon.speciesId];
     spriteImg = new Image();
-    spriteImg.src = `${sp.sprite}?pixel64`;
+    spriteImg.src = assetUrl(sp.sprite);
     const ball = BALLS[getSelectedBall()];
     ballImg = new Image();
-    if (ball) ballImg.src = ball.sprite;
+    if (ball) ballImg.src = assetUrl(ball.sprite);
   }
 
   loadImages();
@@ -565,7 +566,7 @@ export function createCatchController(canvas, {
     const ball = BALLS[getSelectedBall()];
     if (ball) {
       ballImg = new Image();
-      ballImg.src = ball.sprite;
+      ballImg.src = assetUrl(ball.sprite);
     }
   }
 

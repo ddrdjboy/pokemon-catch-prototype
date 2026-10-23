@@ -1,0 +1,14 @@
+---
+description: After finishing feature/fix work, always commit, merge to main, and deploy without asking
+alwaysApply: true
+---
+
+# Commit → Merge → Deploy
+
+Whenever implementation work for a task is **complete and verified**, do these three steps **immediately** without waiting for the user to ask again:
+
+1. **Commit** — stage only the relevant files; write a concise commit message; commit on a feature/fix branch (`ddrdjboy/feature-*` or `ddrdjboy/fix-*`), not by leaving long-lived work only on local `main`.
+2. **Merge** — push the branch, open a PR with `gh pr create`, then merge into `main` with `gh pr merge` (prefer the repo’s usual merge style). Pull/rebase onto latest `origin/main` first if needed so the PR is clean.
+3. **Deploy** — this repo’s GitHub Pages publishes from `main` (`/`). Merging to `main` **is** the deploy. Confirm Pages is building/built (`gh api repos/ddrdjboy/pokemon-catch-prototype/pages`) and report the live URL: https://ddrdjboy.github.io/pokemon-catch-prototype/
+
+Do not stop after “ready to commit” or “want me to open a PR?” — execute all three unless the user explicitly says not to for that task.

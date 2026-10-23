@@ -1,18 +1,14 @@
 ---
-description: Where to create isolated git worktrees for this project
+description: Always use project-local .worktrees/ for isolated feature workspaces
 alwaysApply: true
 ---
 
 # Git worktrees
 
-Isolated feature work for this repo lives outside the main checkout.
+When creating an isolated workspace for feature implementation (plans, subagent-driven development, parallel branches):
 
-- Directory: `/Users/weigangchen/orca/workspaces/宝可梦游戏/<fish-name>/`
-- Pick a short unused fish name (existing: inconnu, perch, redfish, sole, trout, herring).
-- Branch: `ddrdjboy/feature-<topic>` (or `ddrdjboy/fix-<topic>` for a bugfix).
-- Create with `git worktree add` from the current HEAD. Do not implement feature work directly on `main`.
-- Do not use `.worktrees/` inside the repo.
-
-```bash
-git worktree add "/Users/weigangchen/orca/workspaces/宝可梦游戏/herring" -b ddrdjboy/feature-party-detail
-```
+- **Always** use the project-local directory `.worktrees/` (e.g. `.worktrees/<feature-slug>`).
+- **Do not** ask where to put worktrees, and **do not** use `~/.config/superpowers/worktrees/` or sibling「鱼名」checkouts unless the user explicitly overrides.
+- Ensure `.worktrees/` is listed in `.gitignore` before creating a worktree.
+- Prefer: `git worktree add .worktrees/<feature-slug> -b <branch>` (or attach an existing branch).
+- Do not implement feature work directly on `main`.

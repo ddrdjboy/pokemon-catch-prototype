@@ -326,14 +326,22 @@ body {
     flex: 1 1 0;
   }
 
+  #screen-select .party-pane {
+    min-height: 0;
+  }
+
   /* Select-screen party: vertical list on desktop/iPad; mobile keeps horizontal rail */
   #screen-select #party-list.party-list {
+    flex: 1 1 0;
+    min-height: 0;
     flex-direction: column;
     flex-wrap: nowrap;
     overflow-x: visible;
-    overflow-y: visible;
+    overflow-y: auto;
     padding-bottom: 0;
     overscroll-behavior-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #4a6580 transparent;
   }
 
   #screen-select #party-list .party-card {

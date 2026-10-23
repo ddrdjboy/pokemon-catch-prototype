@@ -304,13 +304,6 @@ body {
   max-height: none;
 }
 
-/* Desktop is a row layout: keep party as a side column, rail scrolls inside it. */
-@media (min-width: 721px) {
-  #screen-select .split-pane.party-pane:last-child {
-    flex: 1 1 0;
-  }
-}
-
 .party-list {
   display: flex;
   flex-direction: row;
@@ -325,6 +318,84 @@ body {
 
 #screen-select .party-list {
   grid-template-columns: unset;
+}
+
+/* Desktop is a row layout: keep party as a side column, rail scrolls inside it. */
+@media (min-width: 721px) {
+  #screen-select .split-pane.party-pane:last-child {
+    flex: 1 1 0;
+  }
+
+  #screen-select .party-pane {
+    min-height: 0;
+  }
+
+  /* Select-screen party: vertical list on desktop/iPad; mobile keeps horizontal rail */
+  #screen-select #party-list.party-list {
+    flex: 1 1 0;
+    min-height: 0;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    overflow-x: visible;
+    overflow-y: auto;
+    padding-bottom: 0;
+    overscroll-behavior-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #4a6580 transparent;
+  }
+
+  #screen-select #party-list .party-card {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    max-width: none;
+    text-align: left;
+    gap: 10px;
+    padding: 8px 10px;
+    min-height: 64px;
+  }
+
+  #screen-select #party-list .party-card .sprite-frame {
+    width: 52px;
+    height: 52px;
+  }
+
+  #screen-select #party-list .party-card img {
+    width: 44px;
+    height: 44px;
+  }
+
+  #screen-select #party-list .party-card > strong {
+    flex: 1 1 auto;
+    width: auto;
+    font-size: 0.9rem;
+  }
+
+  #screen-select #party-list .party-card > .meta {
+    position: static;
+    margin-left: auto;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.35);
+    font-size: 0.75rem;
+  }
+
+  #screen-select #party-list .party-popover {
+    border-radius: 10px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px;
+  }
+
+  #screen-select #party-list .party-popover button {
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+  }
 }
 
 /* Pick-party: wrapping grid of tile cards */

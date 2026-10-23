@@ -11,7 +11,6 @@ const BGM = {
 
 const SFX_KEYS = ['fire', 'water', 'electric', 'grass', 'rock', 'psychic', 'dragon', 'normal'];
 const CATCH_SUCCESS_KEY = 'catch_success';
-const ALL_SFX_KEYS = [...SFX_KEYS, CATCH_SUCCESS_KEY];
 
 const SFX_BUCKETS = {
   fire: 'fire',
@@ -69,7 +68,7 @@ function ensureBgm() {
   if (!bgmEl) {
     bgmEl = new Audio();
     bgmEl.loop = true;
-    bgmEl.preload = 'auto';
+    bgmEl.preload = 'none';
     bgmEl.volume = BGM_VOLUME;
   }
   return bgmEl;
@@ -80,7 +79,7 @@ function ensureSfx(key) {
   let el = sfxEls.get(key);
   if (!el) {
     el = new Audio(`assets/sound/effect/${key}.wav`);
-    el.preload = 'auto';
+    el.preload = 'none';
     el.volume = SFX_VOLUME;
     sfxEls.set(key, el);
   }
@@ -131,9 +130,10 @@ export function isSfxEnabled() {
 export function unlockAudio() {
   if (unlocked) return;
   unlocked = true;
-  const el = ensureBgm();
+  // Do not preload BGM/SFX here — load on first real play to avoid
+  // contending with first-paint image downloads.
+  const el = bgmEl;
   if (el && el.src && musicEnabled) safePlay(el);
-  for (const key of ALL_SFX_KEYS) ensureSfx(key);
 }
 
 export function playExploreBgm() {

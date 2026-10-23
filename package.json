@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/battle-catch.test.js && node tests/final-move-kits.test.js && node tests/battle-moves.test.js",
-    "start": "npx --yes serve -l 5173 ."
+    "test": "node tests/assets.test.js && node tests/battle-catch.test.js && node tests/final-move-kits.test.js && node tests/battle-moves.test.js",
+    "start": "npx --yes serve -l 5173 .",
+    "gen:thumbs": "node scripts/gen-pokemon-thumbs.mjs"
   }
 }

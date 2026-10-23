@@ -95,10 +95,11 @@ import {
 } from './boss-ui.js';
 import { partyIndividualView } from './party-detail.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from './maze-minimap.js';
+import { assetUrl, pokemonUrl, preloadImages } from './assets.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
-const ASSET_VER = 'v2pixel192e-8bit-maze-scroll2';
-const spriteUrl = (path) => `${path}?${ASSET_VER}`;
+/** First N map cards load eagerly; the rest use loading=lazy. */
+const MAP_CARD_EAGER = 8;
 
 /** Pixel size of one maze cell; keep in sync with CSS `--maze-tile`. */
 const MAZE_TILE = 56;
@@ -779,12 +780,24 @@ function refreshSettingsPanel() {
   if (numBtn) numBtn.textContent = state.damageNumbers !== false ? '开' : '关';
 }
 
+function preloadSelectAssets() {
+  const maps = Object.values(MAPS)
+    .slice(0, MAP_CARD_EAGER)
+    .map((m) => assetUrl(m.image));
+  const party = (state.party || []).map((mon) => {
+    const sp = SPECIES[mon.speciesId];
+    return sp ? pokemonUrl(sp.sprite, 'thumb') : null;
+  });
+  void preloadImages([...maps, ...party]);
+}
+
 function renderSelect() {
   refreshHeader();
   const cards = $('map-cards');
   cards.innerHTML = '';
   setMapNote('');
-  for (const map of Object.values(MAPS)) {
+  const maps = Object.values(MAPS);
+  maps.forEach((map, index) => {
     const enc = state.encounters[map.id] || [];
     const remaining = enc.filter((e) => !state.cleared[`${map.id}:${e.id}`]).length;
     const spiritLocked = map.spiritHall && !state.twinCleared;
@@ -807,8 +820,10 @@ function renderSelect() {
           ? `双打挑战 Lv.${lvMin} · 双子钥匙 ${state.twinKeys || 0}/${TWIN_KEY_COST}`
           : `推荐 Lv.${lvMin}–${lvMax} · 剩余 ${remaining}/${enc.length}`;
     }
+    const eager = index < MAP_CARD_EAGER;
+    const imgAttrs = eager ? 'fetchpriority="high"' : 'loading="lazy"';
     card.innerHTML = `
-      <img src="${spriteUrl(map.image)}" alt="${map.name}" />
+      <img src="${assetUrl(map.image)}" alt="${map.name}" ${imgAttrs} />
       <div class="meta">
         <strong>${map.name}</strong>
         <span>${meta}</span>
@@ -816,8 +831,7 @@ function renderSelect() {
     `;
     card.addEventListener('click', () => tryEnterMap(map.id));
     cards.appendChild(card);
-  }
-  renderShop();
+  });
   const count = $('party-count');
   count.textContent = `${state.party.length}/${PARTY_CAP}`;
   count.classList.toggle('full', state.party.length >= PARTY_CAP);
@@ -830,7 +844,7 @@ function renderShop() {
   for (const ball of Object.values(BALLS)) {
     shop.appendChild(shopItem({
       title: ball.name,
-      img: ball.sprite,
+      img: assetUrl(ball.sprite),
       price: ball.price,
       owned: state.balls[ball.id] || 0,
       disabled: state.coins < ball.price,
@@ -949,7 +963,7 @@ function renderDex() {
     row.type = 'button';
     row.className = 'dex-row';
     row.innerHTML = `
-      <img src="${spriteUrl(e.sprite)}" alt="${e.name}" />
+      <img src="${pokemonUrl(e.sprite, 'thumb')}" alt="${e.name}" loading="lazy" />
       <span class="name">${e.name}</span>
       <span class="${typeTagClass(e.type)}">${typeLabel(e.type)}</span>
     `;
@@ -988,7 +1002,7 @@ function renderDexDetail(detail, mon = null) {
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
     <div class="dex-hero-wrap">
-      <img class="hero" src="${spriteUrl(detail.sprite)}" alt="${detail.name}" />
+      <img class="hero" src="${pokemonUrl(detail.sprite, 'full')}" alt="${detail.name}" />
     </div>
     ${canAnim ? '<button type="button" id="btn-dex-anim" class="dex-anim-btn">播放动画</button>' : ''}
     ${individualHtml}
@@ -1142,7 +1156,7 @@ function renderParty(container, selectable, onPick, mons = null, { onlyConscious
     const inBattle = index >= 0 && index < ACTIVE_CAP;
     if (inBattle && !selectable) card.classList.add('in-battle');
     card.innerHTML = `
-      <div class="sprite-frame"><img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" /></div>
+      <div class="sprite-frame"><img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="${sp.name}" /></div>
       <strong>${sp.name}</strong>
       <div class="meta">Lv.${mon.level}${mon.hp <= 0 ? ' · 倒' : ''}</div>
     `;
@@ -1583,7 +1597,7 @@ function renderMaze() {
     if (!sp) continue;
     const img = document.createElement('img');
     img.className = 'maze-entity roamer';
-    img.src = spriteUrl(sp.sprite);
+    img.src = pokemonUrl(sp.sprite, 'thumb');
     img.alt = sp.name;
     img.title = `${sp.name} Lv.${roamer.level}`;
     img.style.left = `${roamer.x * tile}px`;
@@ -1599,7 +1613,7 @@ function renderMaze() {
     if (sp) {
       const img = document.createElement('img');
       img.className = 'maze-entity boss';
-      img.src = spriteUrl(sp.sprite);
+      img.src = pokemonUrl(sp.sprite, 'thumb');
       img.alt = sp.name;
       img.title = `${sp.name} Lv.${boss.level}`;
       img.style.left = `${mazeRun.stairs.x * tile}px`;
@@ -1612,7 +1626,7 @@ function renderMaze() {
 
   const playerImg = document.createElement('img');
   playerImg.className = 'maze-entity player';
-  playerImg.src = spriteUrl(mazePlayerSprite());
+  playerImg.src = pokemonUrl(mazePlayerSprite(), 'thumb');
   playerImg.alt = '我方';
   playerImg.style.left = `${mazeRun.player.x * tile}px`;
   playerImg.style.top = `${mazeRun.player.y * tile}px`;
@@ -1671,7 +1685,7 @@ function openMap(mapId) {
   currentMapId = mapId;
   const map = MAPS[mapId];
   $('map-title').textContent = map.name;
-  $('map-bg').src = spriteUrl(map.image);
+  $('map-bg').src = assetUrl(map.image);
   const markers = $('map-markers');
   markers.innerHTML = '';
   const encs = state.encounters[mapId] || [];
@@ -1706,7 +1720,7 @@ function openMap(mapId) {
         ? `${enc.team.length}只`
         : `${sp.name} Lv.${enc.level}`;
     el.innerHTML = `
-      <img src="${spriteUrl(sp.sprite)}" alt="" />
+      <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
       <div class="label">
         ${who}<br/>${detail}${enc.dual ? `<br/>Lv.${enc.level}` : ''}
         ${boss ? '<br/><span class="tag boss">头目</span>' : ''}
@@ -1799,7 +1813,7 @@ function renderDualLeadPick() {
     });
     const order = dualPickUids.indexOf(mon.uid);
     card.innerHTML = `
-      <div class="sprite-frame"><img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" /></div>
+      <div class="sprite-frame"><img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="${sp.name}" /></div>
       <div class="body">
         <strong>${sp.name}${order >= 0 ? ` · #${order + 1}` : ''}</strong>
         <div>Lv.${mon.level} · HP ${mon.hp}/${mon.maxHp}</div>
@@ -1913,7 +1927,7 @@ function renderSprite(wrapId, mon) {
   const sp = SPECIES[mon.speciesId];
   const floats = [...wrap.querySelectorAll('.fx-num')];
   wrap.className = spriteWrapClassName({ shiny: !!mon.shiny, boss: !!mon.boss });
-  wrap.innerHTML = `<img src="${spriteUrl(sp.sprite)}" alt="${sp.name}" />`;
+  wrap.innerHTML = `<img src="${pokemonUrl(sp.sprite, 'full')}" alt="${sp.name}" />`;
   for (const num of floats) wrap.appendChild(num);
 }
 
@@ -1994,7 +2008,7 @@ function renderAllies() {
     const sp = SPECIES[mon.speciesId];
     const pct = Math.max(0, Math.round((mon.hp / mon.maxHp) * 100));
     return `<div class="ally-chip${mon.hp <= 0 ? ' fainted' : ''}">
-      <img src="${spriteUrl(sp.sprite)}" alt="" />
+      <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
       <div>电脑 ${sp.name}</div>
       <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
     </div>`;
@@ -2873,7 +2887,7 @@ function renderBallPicker() {
     btn.className = `ball-option${id === selectedBallId ? ' selected' : ''}`;
     btn.disabled = busy || count <= 0;
     btn.innerHTML = `
-      <img src="${ball.sprite}" alt="" />
+      <img src="${assetUrl(ball.sprite)}" alt="" />
       <div>${ball.name}</div>
       <div class="tag">${ballTag(ball)}</div>
       <div class="count">×${count}</div>
@@ -3149,7 +3163,13 @@ $('reset-modal').addEventListener('click', (e) => {
 document.addEventListener('pointerdown', () => {
   unlockAudio();
   const onBattle = !screens.battle.classList.contains('hidden');
-  if (!onBattle) playExploreBgm();
+  if (onBattle) return;
+  const startExplore = () => playExploreBgm();
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(startExplore, { timeout: 1500 });
+  } else {
+    setTimeout(startExplore, 0);
+  }
 }, { once: true });
 
 // Prevent accidental page zoom (double-tap / iOS gesture)
@@ -3162,5 +3182,6 @@ window.addEventListener('resize', () => syncBossOutlineHairline());
 applyAudioSettings();
 applyBattleMoveLayout();
 save();
+preloadSelectAssets();
 showScreen('select');
 renderSelect();

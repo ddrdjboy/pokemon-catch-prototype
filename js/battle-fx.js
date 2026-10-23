@@ -7,6 +7,8 @@
  * otherwise fall back to medium.
  */
 
+import { assetUrl } from './assets.js';
+
 const MODES = new Set(['off', 'light', 'medium', 'heavy']);
 
 const TYPE_TINT = {
@@ -32,7 +34,6 @@ const TYPE_TINT = {
 
 const FIGHTER_FRAME_COUNT = 5;
 const FIGHTER_FRAME_MS = 90;
-const FIGHTER_ASSET_VER = 'fighter2';
 
 const fighterCache = new Map(); // speciesId -> HTMLImageElement[] | null
 /** @type {Map<string, Promise<HTMLImageElement[] | null>>} */
@@ -125,7 +126,7 @@ export async function loadFighterFrames(speciesId, { loader } = {}) {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`fighter frame missing: ${url}`));
-    img.src = `${url}?v=${FIGHTER_ASSET_VER}`;
+    img.src = assetUrl(url);
   }));
 
   const pending = (async () => {

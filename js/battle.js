@@ -456,14 +456,20 @@ export function resolveFormationTurn(player, allies, foes, {
   for (const actor of actors) {
     if (actor.mon.hp <= 0) continue;
     if (actor.side === 'foe') {
-      const squad = livingAllies().map((u) => u.mon);
-      if (!squad.length) break;
+      const units = livingAllies();
+      if (!units.length) break;
       const kit = speciesMoveList(SPECIES[actor.mon.speciesId]);
       const move = kit[Math.min(kit.length - 1, Math.floor(rng() * kit.length))] || primaryMove(actor.mon.speciesId);
-      const targets = move.aoe ? squad : [pickLowestHp(squad)];
-      for (const t of targets) {
-        if (t.hp <= 0) continue;
-        logs.push(resolveMoveForActor(actor.mon, t, move, rng, 'foe', { actorIndex: actor.index }));
+      const picked = move.aoe
+        ? units
+        : [units.slice().sort((a, b) => (a.mon.hp / a.mon.maxHp) - (b.mon.hp / b.mon.maxHp))[0]];
+      for (const u of picked) {
+        if (u.mon.hp <= 0) continue;
+        logs.push(resolveMoveForActor(actor.mon, u.mon, move, rng, 'foe', {
+          actorIndex: actor.index,
+          target: u.side === 'ally' ? 'ally' : 'player',
+          ...(u.side === 'ally' ? { allyIndex: u.index } : {}),
+        }));
       }
       continue;
     }
@@ -482,13 +488,17 @@ export function resolveFormationTurn(player, allies, foes, {
     } else {
       chosen = pickLowestHp(targets);
     }
+    const side = actor.side === 'player' ? 'player' : 'ally';
     logs.push(resolveMoveForActor(
       actor.mon,
       chosen,
       move,
       rng,
-      actor.side === 'player' ? 'player' : 'ally',
-      { targetIndex: enemy.indexOf(chosen) },
+      side,
+      {
+        targetIndex: enemy.indexOf(chosen),
+        ...(side === 'ally' ? { allyIndex: actor.index } : {}),
+      },
     ));
   }
 

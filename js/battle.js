@@ -471,7 +471,8 @@ export function resolveFormationTurn(player, allies, foes, {
     const move = actor.side === 'player'
       ? (playerMove || primaryMove(p.speciesId))
       : primaryMove(actor.mon.speciesId);
-    const pierce = !!move.pierce;
+    // Player may aim any living foe (including back row); allies still respect front lock unless pierce.
+    const pierce = actor.side === 'player' ? true : !!move.pierce;
     const targets = legalFormationTargets(enemy, { pierce });
     if (!targets.length) break;
     let chosen;

@@ -1483,19 +1483,39 @@ button.danger {
   transform: scaleX(-1);
 }
 
-/* Host chip stays put (name/HP planted); flying art paints above every row. */
-.formation-chip.fx-dashing,
-.sprite-wrap.fx-dashing,
-.ally-chip.fx-dashing {
+/*
+ * Acting unit paints above every other formation chip for dash + attack.
+ * Elevate side + row too — row/side stacking contexts otherwise trap a
+ * back-row or foe actor under the front row / player side.
+ */
+.foe-formation.fx-acting-side,
+.player-formation.fx-acting-side {
   position: relative;
-  z-index: 30;
+  z-index: 55;
+}
+
+.foe-formation .formation-row.fx-acting-row,
+.player-formation .formation-row.fx-acting-row,
+.formation-row.fx-acting-row {
+  position: relative;
+  z-index: 60;
+}
+
+.formation-chip.fx-acting,
+.sprite-wrap.fx-acting,
+.ally-chip.fx-acting {
+  position: relative;
+  z-index: 70;
   pointer-events: none;
 }
 
-.formation-chip.fx-dashing .chip-art,
-.fx-dashing-art {
+.formation-chip.fx-acting .chip-art,
+.formation-chip.fx-acting:nth-child(n) .chip-art,
+.formation-chip.player-chip.fx-acting .chip-art,
+.formation-chip.selected.fx-acting .chip-art,
+.fx-acting-art {
   position: relative;
-  z-index: 40;
+  z-index: 80;
   will-change: transform;
   pointer-events: none;
 }

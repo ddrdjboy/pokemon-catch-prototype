@@ -1177,7 +1177,7 @@ button.danger {
   flex-wrap: nowrap;
   align-items: flex-end;
   justify-content: center;
-  gap: 0;
+  gap: 0.2rem;
   width: 100%;
   min-height: 110px;
 }
@@ -1191,7 +1191,7 @@ button.danger {
   flex: 1 1 0;
   min-width: 0;
   width: 0;
-  margin: 0 -3.5%;
+  margin: 0;
   text-align: center;
   opacity: 1;
   cursor: pointer;
@@ -1202,13 +1202,24 @@ button.danger {
   color: inherit;
   font: inherit;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.formation-chip:nth-child(1) { z-index: 1; }
-.formation-chip:nth-child(2) { z-index: 2; }
-.formation-chip:nth-child(3) { z-index: 3; }
-.formation-chip:nth-child(4) { z-index: 2; }
-.formation-chip:nth-child(5) { z-index: 1; }
+.formation-chip .chip-art {
+  position: relative;
+  z-index: 1;
+  width: 140%;
+  margin: 0 -20%;
+  line-height: 0;
+}
+
+.formation-chip:nth-child(1) .chip-art { z-index: 1; }
+.formation-chip:nth-child(2) .chip-art { z-index: 2; }
+.formation-chip:nth-child(3) .chip-art { z-index: 3; }
+.formation-chip:nth-child(4) .chip-art { z-index: 2; }
+.formation-chip:nth-child(5) .chip-art { z-index: 1; }
 
 .formation-chip img {
   width: clamp(64px, 20vw, 100px);
@@ -1222,11 +1233,14 @@ button.danger {
   pointer-events: none;
 }
 
+/* Name + HP stay in slot width so bars never overlap. */
 .formation-chip .chip-meta {
   position: relative;
-  z-index: 2;
-  margin-top: -0.15rem;
-  padding: 0 1px;
+  z-index: 4;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 0 2px;
 }
 
 .formation-chip .chip-name {
@@ -1239,19 +1253,16 @@ button.danger {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
-.formation-chip .chip-tag {
-  display: none;
-}
-
 .formation-chip .hp-bar {
   height: 4px;
   margin-top: 2px;
+  width: 100%;
   background: rgba(0, 0, 0, 0.45);
   border-radius: 999px;
   overflow: hidden;
 }
 
-.formation-chip.boss img {
+.formation-chip.boss .chip-art img {
   filter:
     drop-shadow(0 0 4px rgba(220, 70, 70, 0.75))
     drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
@@ -1266,11 +1277,14 @@ button.danger {
 
 .formation-chip.player-chip {
   cursor: default;
-  z-index: 5;
 }
 
 .formation-chip.player-chip .chip-name {
   color: #9fd0ff;
+}
+
+.formation-chip.player-chip .chip-art {
+  z-index: 5;
 }
 
 .formation-chip.player-chip img {
@@ -1281,6 +1295,9 @@ button.danger {
 
 .formation-chip.ally-chip {
   cursor: default;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .formation-chip.ally-chip img {

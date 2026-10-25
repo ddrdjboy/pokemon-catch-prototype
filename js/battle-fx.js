@@ -255,6 +255,51 @@ function dashArtEl(anchorEl) {
 }
 
 /**
+ * Raise the acting unit above every other formation chip for the whole action
+ * (dash + attack frames + return). Elevates side + row so stacking contexts
+ * cannot trap a back-row or foe actor under the front / player side.
+ */
+function beginActingElevate(attackerEl) {
+  if (!attackerEl) return () => {};
+  const mover = dashArtEl(attackerEl);
+  const row = attackerEl.closest?.('.formation-row') || null;
+  const sideEl = attackerEl.closest?.('.foe-formation, .player-formation') || null;
+  const prev = {
+    moverZ: mover?.style?.zIndex,
+    moverTransition: mover?.style?.transition,
+    moverTransform: mover?.style?.transform,
+  };
+  sideEl?.classList.add('fx-acting-side');
+  row?.classList.add('fx-acting-row');
+  attackerEl.classList.add('fx-acting');
+  mover?.classList.add('fx-acting-art');
+  if (mover?.style) {
+    mover.style.zIndex = '80';
+    mover.style.transition = 'none';
+  }
+  return () => {
+    sideEl?.classList.remove('fx-acting-side');
+    row?.classList.remove('fx-acting-row');
+    attackerEl.classList.remove('fx-acting');
+    mover?.classList.remove('fx-acting-art');
+    if (mover?.style) {
+      mover.style.zIndex = prev.moverZ;
+      mover.style.transition = prev.moverTransition;
+      mover.style.transform = prev.moverTransform;
+    }
+  };
+}
+
+async function withActingElevate(attackerEl, run) {
+  const end = beginActingElevate(attackerEl);
+  try {
+    return await run();
+  } finally {
+    end();
+  }
+}
+
+/**
  * Rush attacker art to just in front of defender along a slight arc, strike, then arc home.
  * Name/HP stay in the home slot. Falls back to in-place lunge when geometry is unavailable.
  */
@@ -265,9 +310,11 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   reducedMotion = false,
 } = {}) {
   if (!attackerEl || !defenderEl || reducedMotion) {
-    await playLight(attackerEl, defenderEl, side);
-    if (mode !== 'light') await playBurst(defenderEl, moveType);
-    return { played: mode === 'light' ? 'light' : 'medium' };
+    return withActingElevate(attackerEl, async () => {
+      await playLight(attackerEl, defenderEl, side);
+      if (mode !== 'light') await playBurst(defenderEl, moveType);
+      return { played: mode === 'light' ? 'light' : 'medium' };
+    });
   }
 
   const mover = dashArtEl(attackerEl);
@@ -275,9 +322,11 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   const a = mover.getBoundingClientRect();
   const d = aim.getBoundingClientRect();
   if (!(a.width > 0 && d.width > 0)) {
-    await playLight(attackerEl, defenderEl, side);
-    if (mode !== 'light') await playBurst(defenderEl, moveType);
-    return { played: 'light' };
+    return withActingElevate(attackerEl, async () => {
+      await playLight(attackerEl, defenderEl, side);
+      if (mode !== 'light') await playBurst(defenderEl, moveType);
+      return { played: 'light' };
+    });
   }
 
   const aCx = a.left + a.width / 2;
@@ -295,44 +344,32 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   const arcHeight = Math.min(96, Math.max(42, dist * 0.42));
   const leanDeg = side === 'foe' ? -10 : 10;
 
-  const prevTransition = mover.style.transition;
-  const prevTransform = mover.style.transform;
-  const prevZ = mover.style.zIndex;
-  // Raise the whole chip in the stacking order so flying art paints above every row.
-  attackerEl.classList.add('fx-dashing');
-  mover.classList.add('fx-dashing-art');
-  mover.style.zIndex = '40';
-  mover.style.transition = 'none';
-  void mover.offsetWidth;
+  return withActingElevate(attackerEl, async () => {
+    void mover.offsetWidth;
 
-  await animateArcTranslate(mover, 0, 0, dx, dy, DASH_IN_MS, { arcHeight, leanDeg });
+    await animateArcTranslate(mover, 0, 0, dx, dy, DASH_IN_MS, { arcHeight, leanDeg });
 
-  if (mode === 'heavy' && attackerSpeciesId) {
-    await playFighterAttack(attackerEl, attackerSpeciesId, { side });
-  } else if (side === 'ally' && attackerEl.classList?.contains('ally-chip')) {
-    await bumpClass(attackerEl, 'fx-chip-flash', 120);
-  }
+    if (mode === 'heavy' && attackerSpeciesId) {
+      await playFighterAttack(attackerEl, attackerSpeciesId, { side });
+    } else if (side === 'ally' && attackerEl.classList?.contains('ally-chip')) {
+      await bumpClass(attackerEl, 'fx-chip-flash', 120);
+    }
 
-  await Promise.all([
-    bumpClass(defenderEl, 'fx-hit', 220),
-    mode === 'light' ? wait(DASH_HOLD_MS) : playBurst(defenderEl, moveType, 280),
-  ]);
+    await Promise.all([
+      bumpClass(defenderEl, 'fx-hit', 220),
+      mode === 'light' ? wait(DASH_HOLD_MS) : playBurst(defenderEl, moveType, 280),
+    ]);
 
-  // Arc back home with the same upward hop so return also reads curved.
-  await animateArcTranslate(mover, dx, dy, 0, 0, DASH_OUT_MS, {
-    arcHeight: arcHeight * 0.75,
-    leanDeg: -leanDeg * 0.6,
+    // Arc back home with the same upward hop so return also reads curved.
+    await animateArcTranslate(mover, dx, dy, 0, 0, DASH_OUT_MS, {
+      arcHeight: arcHeight * 0.75,
+      leanDeg: -leanDeg * 0.6,
+    });
+
+    if (mode === 'heavy' && attackerSpeciesId) return { played: 'heavy-dash' };
+    if (side === 'ally') return { played: mode === 'light' ? 'light-ally-dash' : 'medium-ally-dash' };
+    return { played: mode === 'light' ? 'light-dash' : (mode === 'heavy' ? 'medium-fallback' : 'medium-dash') };
   });
-
-  attackerEl.classList.remove('fx-dashing');
-  mover.classList.remove('fx-dashing-art');
-  mover.style.transition = prevTransition;
-  mover.style.transform = prevTransform;
-  mover.style.zIndex = prevZ;
-
-  if (mode === 'heavy' && attackerSpeciesId) return { played: 'heavy-dash' };
-  if (side === 'ally') return { played: mode === 'light' ? 'light-ally-dash' : 'medium-ally-dash' };
-  return { played: mode === 'light' ? 'light-dash' : (mode === 'heavy' ? 'medium-fallback' : 'medium-dash') };
 }
 
 export async function playHit({

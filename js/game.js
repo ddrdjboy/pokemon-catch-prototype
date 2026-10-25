@@ -2135,6 +2135,10 @@ function renderBattle() {
   renderAllies();
 }
 
+function formationChipHp(mon) {
+  return Math.max(0, Math.round((mon.hp / mon.maxHp) * 100));
+}
+
 function renderFormationField() {
   ensureFormationTarget();
   const back = $('foe-row-back');
@@ -2153,16 +2157,16 @@ function renderFormationField() {
     const locked = !down && !legalSet.has(mon);
     const selected = index === battle.selectedTarget && !down;
     chip.className = [
-      'foe-chip',
+      'formation-chip',
       mon.boss ? 'boss' : '',
       down ? 'down' : '',
       locked ? 'locked' : '',
       selected ? 'selected' : '',
     ].filter(Boolean).join(' ');
-    const pct = Math.max(0, Math.round((mon.hp / mon.maxHp) * 100));
+    const pct = formationChipHp(mon);
     chip.innerHTML = `
       <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
-      <div>${sp.name}</div>
+      <span class="chip-name">${sp.name}</span>
       <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
     `;
     if (!down && !locked) {
@@ -2176,7 +2180,6 @@ function renderFormationField() {
     else front.appendChild(chip);
   });
 
-  renderFighterSlot('player', 0, battle.player);
   battle.foe = battle.foes[battle.selectedTarget] || battle.foes.find((f) => f.hp > 0) || battle.foes[0];
   const next = $('formation-next');
   if (next) {
@@ -2185,11 +2188,69 @@ function renderFormationField() {
       ? `锁定：${SPECIES[sel.speciesId].name}${sel.boss ? '（头目）' : ''} · ${sel.row === 'front' ? '前排' : '后排'}`
       : '选择可攻击的目标';
   }
-  renderAllies();
+  renderFormationParty();
+}
+
+/** Five equal slots: ally ally player ally ally. */
+function renderFormationParty() {
+  const row = $('player-row');
+  const wrap = $('player-formation');
+  if (!row || !wrap) return;
+  wrap.classList.remove('hidden');
+  const allies = battle.allies || [];
+  const slots = [
+    { mon: allies[0], role: 'ally', label: '助战' },
+    { mon: allies[1], role: 'ally', label: '助战' },
+    { mon: battle.player, role: 'player', label: '玩家' },
+    { mon: allies[2], role: 'ally', label: '助战' },
+    { mon: allies[3], role: 'ally', label: '助战' },
+  ];
+  row.innerHTML = '';
+  for (const slot of slots) {
+    const mon = slot.mon;
+    const chip = document.createElement('div');
+    if (!mon) {
+      chip.className = 'formation-chip down';
+      chip.innerHTML = `<span class="chip-name">—</span>`;
+      row.appendChild(chip);
+      continue;
+    }
+    const sp = SPECIES[mon.speciesId];
+    const pct = formationChipHp(mon);
+    const isPlayer = slot.role === 'player';
+    chip.className = [
+      'formation-chip',
+      isPlayer ? 'player-chip' : 'ally-chip',
+      mon.hp <= 0 ? 'fainted' : '',
+    ].filter(Boolean).join(' ');
+    chip.innerHTML = `
+      <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
+      <span class="chip-tag">${slot.label}</span>
+      <span class="chip-name">${sp.name}</span>
+      <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
+    `;
+    row.appendChild(chip);
+  }
+  // Keep classic player HP sync target for existing helpers when needed
+  const playerHp = $('player-hp');
+  if (playerHp && battle.player) {
+    setHpBar('player-hp', battle.player.hp, battle.player.maxHp);
+  }
+  const playerName = $('player-name');
+  if (playerName && battle.player) {
+    playerName.textContent = SPECIES[battle.player.speciesId]?.name || '';
+  }
 }
 
 function renderAllies() {
   const row = $('ally-row');
+  if (!row) return;
+  if (battle?.formation) {
+    row.classList.add('hidden');
+    row.innerHTML = '';
+    renderFormationParty();
+    return;
+  }
   if (!battle?.allies) {
     row.classList.add('hidden');
     row.innerHTML = '';

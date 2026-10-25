@@ -1142,76 +1142,137 @@ button.danger {
   box-shadow: 0 0 0 1px rgba(120, 90, 180, 0.35);
 }
 
-.foe-formation {
+.foe-formation,
+.player-formation {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   width: 100%;
 }
 
-.foe-row {
-  display: flex;
-  justify-content: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
+.formation-side-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
 }
 
-.foe-row .foe-chip {
-  width: 64px;
+.formation-side-label.foe-side {
+  color: #e08080;
+}
+
+.formation-side-label.player-side {
+  color: var(--accent, #5ab4ff);
+}
+
+.player-formation {
+  margin-top: 0.35rem;
+  padding: 0.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(90, 180, 255, 0.45);
+  background: rgba(90, 180, 255, 0.08);
+}
+
+.formation-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.formation-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
   text-align: center;
-  font-size: 11px;
   opacity: 1;
   cursor: pointer;
   background: #15202b;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 4px;
+  padding: 3px 2px;
+  color: inherit;
+  font: inherit;
 }
 
-.foe-row .foe-chip img {
-  width: 40px;
-  height: 40px;
+.formation-chip img {
+  width: min(40px, 100%);
+  height: 36px;
   object-fit: contain;
   image-rendering: pixelated;
+  display: block;
+  margin: 0 auto;
 }
 
-.foe-row .foe-chip .hp-bar {
-  height: 6px;
+.formation-chip .chip-name {
+  display: block;
+  margin-top: 2px;
+  font-size: clamp(7px, 2.1vw, 11px);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.formation-chip .chip-tag {
+  display: block;
+  font-size: clamp(6px, 1.8vw, 9px);
+  color: var(--accent, #5ab4ff);
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.formation-chip .hp-bar {
+  height: 5px;
   margin-top: 2px;
 }
 
-.foe-row .foe-chip.locked {
+.formation-chip.locked {
   opacity: 0.4;
   pointer-events: none;
 }
 
-.foe-row .foe-chip.boss {
-  width: 76px;
+.formation-chip.boss {
   outline: 1px solid #c44;
 }
 
-.foe-row .foe-chip.selected {
+.formation-chip.selected {
   outline: 2px solid #f5d76e;
 }
 
-.foe-row .foe-chip.down {
+.formation-chip.down,
+.formation-chip.fainted {
   opacity: 0.25;
   pointer-events: none;
 }
 
-#battle-field.formation-mode .fighter.foe {
+.formation-chip.player-chip {
+  cursor: default;
+  border-color: rgba(90, 180, 255, 0.7);
+  outline: 2px solid var(--accent, #5ab4ff);
+  background: #1a3048;
+  box-shadow: inset 0 0 0 1px rgba(90, 180, 255, 0.25);
+}
+
+.formation-chip.ally-chip {
+  cursor: default;
+  border-color: rgba(120, 160, 120, 0.45);
+  background: #15261b;
+}
+
+#battle-field.formation-mode .fighter.foe,
+#battle-field.formation-mode .fighter.player {
   display: none;
 }
 
 #battle-field.formation-mode #ally-row {
-  display: flex;
-  flex-wrap: wrap;
-  grid-template-columns: none;
+  display: none;
 }
 
-#battle-field.formation-mode #ally-row .ally-chip {
-  flex: 1 1 22%;
-  min-width: 72px;
+#battle-field.formation-mode #player-formation {
+  display: flex;
 }
 
 .party-card.selected {

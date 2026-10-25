@@ -468,6 +468,20 @@ assert(NETHER_UNLOCK_LEVEL === 100 && NETHER_BOSS_LEVEL === 250 && NETHER_BOSS_M
   assert(bosses[0].level === 250 && bosses[2].level === 250, 'side bosses lv250');
   assert(bosses[1].level === 300, 'center boss lv300');
 }
+{
+  const stale = rollEncounter(MAPS.ghost_nether.encounters[0], { hasCharm: false, bossChance: 0 });
+  for (const f of stale.foes) {
+    if (f.boss) f.level = 200;
+  }
+  const resynced = syncEncounters(
+    { encounters: { ghost_nether: [stale] }, cleared: {} },
+    { ghost_nether: MAPS.ghost_nether },
+    (_map, tmpl) => rollEncounter(tmpl, { hasCharm: false, bossChance: 0 }),
+  );
+  const freshBosses = resynced.encounters.ghost_nether[0].foes.filter((f) => f.boss);
+  assert(freshBosses.every((f) => f.level !== 200), 'stale lv200 formation is re-rolled');
+  assert(freshBosses.some((f) => f.level === 300) && freshBosses.filter((f) => f.level === 250).length === 2, 're-roll restores 250/300');
+}
 for (const id of ['remake_darkrai', 'remake_cresselia', 'remake_lunala']) {
   assert(SPECIES[id]?.name?.startsWith('改·') && SPECIES[id].sprite, `${id} remake species`);
 }

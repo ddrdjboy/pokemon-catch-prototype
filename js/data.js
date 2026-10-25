@@ -1058,9 +1058,16 @@ export function syncEncounters(saved, maps, roll) {
     encounters[mapId] = map.encounters.map((tmpl) => {
       const prev = byId.get(tmpl.id);
       if (tmpl.formation) {
+        const bossSlots = (tmpl.back || []).filter((s) => s.boss);
+        const prevBosses = (prev?.foes || []).filter((f) => f.boss);
+        // Re-roll when shape OR boss levels/species drift (e.g. 200 → 250/300).
         const ready = prev?.formation
           && prev.foes?.length === 10
-          && prev.foes.filter((f) => f.boss).length === 3;
+          && prevBosses.length === bossSlots.length
+          && prevBosses.every((f, i) => (
+            f.speciesId === bossSlots[i].speciesId
+            && f.level === bossSlots[i].level
+          ));
         return ready ? prev : roll(map, tmpl);
       }
       if (tmpl.dual) {

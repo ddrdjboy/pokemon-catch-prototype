@@ -2161,8 +2161,7 @@ function renderFormationField() {
       return;
     }
     const sp = SPECIES[mon.speciesId];
-    const blocked = mon.row === 'back' && frontUp;
-    const selected = index === battle.selectedTarget && !blocked;
+    const selected = index === battle.selectedTarget && !(mon.row === 'back' && frontUp);
     chip.className = [
       'formation-chip',
       mon.boss ? 'boss' : '',
@@ -2177,8 +2176,11 @@ function renderFormationField() {
       </div>
     `;
     chip.addEventListener('click', () => {
-      if (blocked) {
-        showAppToast('前排还有敌人，无法选中后排');
+      // Live check — do not close over render-time frontUp.
+      const frontStillUp = battle.foes.some((f) => f.hp > 0 && f.row === 'front');
+      if (mon.row === 'back' && frontStillUp) {
+        const n = battle.foes.filter((f) => f.hp > 0 && f.row === 'front').length;
+        showAppToast(`前排还有 ${n} 只敌人，无法选中后排`);
         return;
       }
       battle.selectedTarget = index;

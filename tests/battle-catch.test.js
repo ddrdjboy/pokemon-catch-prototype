@@ -494,6 +494,22 @@ assert(formTurn.logs.length >= 5, 'player+allies+foes act in speed order');
 assert(formTurn.player && formTurn.allies.length === 4 && formTurn.foes.length === 10, 'formation turn shape');
 assert(['ongoing', 'win', 'lose'].includes(formTurn.result), 'formation result');
 
+{
+  const softFoes = formation.foes.map((f, i) => (
+    i === 0 ? { ...f, hp: 1, maxHp: 1 } : { ...f, hp: f.maxHp, maxHp: f.maxHp }
+  ));
+  const tank = { ...createPokemon('mega_charizard', 200), hp: 9999, maxHp: 9999 };
+  const tankAllies = formAllies.map((a) => ({ ...a, hp: a.maxHp, maxHp: a.maxHp }));
+  const oneKo = resolveFormationTurn(tank, tankAllies, softFoes, {
+    rng: () => 0,
+    playerTargetIndex: 0,
+    playerMove: { name: '重击', power: 500, type: 'fire' },
+  });
+  assert(oneKo.foes[0].hp <= 0, 'aimed foe can fall in one turn');
+  assert(oneKo.foes.some((f) => f.hp > 0), 'other formation foes remain');
+  assert(oneKo.result !== 'win', 'one KO is not a formation win');
+}
+
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);
 assert(dex.length === Object.keys(SPECIES).length, 'lists all species');

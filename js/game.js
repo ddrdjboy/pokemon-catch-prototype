@@ -2730,6 +2730,17 @@ async function onPickMove(move) {
   battleBusy = true;
   setBattleActionBusy(true);
   try {
+    // Formation must use full-field resolve — 1v1 / squad vs battle.foe would
+    // declare win as soon as the aimed chip falls.
+    if (battle.formation) {
+      const turn = resolveFormationTurn(battle.player, battle.allies || [], battle.foes, {
+        playerTargetIndex: battle.selectedTarget,
+        playerMove: move,
+      });
+      await playFormationTurnHits(turn);
+      finishTurnOutcome(turn);
+      return;
+    }
     const startPlayer = { ...battle.player };
     const startFoe = { ...battle.foe };
     const foeMove = chooseFoeMove(startFoe, startPlayer);

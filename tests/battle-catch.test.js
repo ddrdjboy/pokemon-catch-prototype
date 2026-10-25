@@ -1,6 +1,7 @@
 import {
   calcDamage, CRIT_MULT, CRIT_RATE, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
   resolveFoeOnlyTurn, resolveSquadItemTurn, whoGoesFirstDeterministic,
+  legalFormationTargets, resolveFormationTurn,
 } from '../js/battle.js';
 import {
   normalizeBattleAnim,
@@ -474,6 +475,24 @@ assert(formation.foes.filter((f) => f.row === 'back').length === 5, '5 back');
 assert(formation.foes.filter((f) => f.boss).length === 3, '3 bosses');
 const allies4 = createGhostNetherAllies(() => 0.1);
 assert(allies4.length === 4 && new Set(allies4.map((a) => a.speciesId)).size === 4, '4 distinct allies');
+
+const formFoes = formation.foes.map((f) => ({ ...f }));
+const legalFront = legalFormationTargets(formFoes, { pierce: false });
+assert(legalFront.length === 5 && legalFront.every((f) => f.row === 'front'), 'default lock front only');
+const legalPierce = legalFormationTargets(formFoes, { pierce: true });
+assert(legalPierce.length === 10, 'pierce can lock all');
+formFoes.filter((f) => f.row === 'front').forEach((f) => { f.hp = 0; });
+assert(legalFormationTargets(formFoes, { pierce: false }).every((f) => f.row === 'back'), 'back opens after front clear');
+
+const formPlayer = createPokemon('mega_charizard', 140);
+const formAllies = createGhostNetherAllies(() => 0.2);
+const formTurn = resolveFormationTurn(formPlayer, formAllies, formation.foes.map((f) => ({ ...f })), {
+  rng: () => 0,
+  playerTargetIndex: formation.foes.findIndex((f) => f.row === 'front'),
+});
+assert(formTurn.logs.length >= 5, 'player+allies+foes act in speed order');
+assert(formTurn.player && formTurn.allies.length === 4 && formTurn.foes.length === 10, 'formation turn shape');
+assert(['ongoing', 'win', 'lose'].includes(formTurn.result), 'formation result');
 
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);

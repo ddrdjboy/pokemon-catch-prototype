@@ -365,8 +365,8 @@ function formationPlayerMove() {
 
 function ensureFormationTarget() {
   if (!battle?.formation || !battle.foes) return;
-  // Player can aim any living foe, including back row.
-  const legal = legalFormationTargets(battle.foes, { pierce: true });
+  // Front-row gate: back is only legal once no front foes remain.
+  const legal = legalFormationTargets(battle.foes, { pierce: false });
   if (!legal.length) {
     battle.selectedTarget = -1;
     return;
@@ -2144,16 +2144,18 @@ function renderFormationField() {
   back.innerHTML = '';
   front.innerHTML = '';
 
+  const frontUp = battle.foes.some((f) => f.hp > 0 && f.row === 'front');
+
   battle.foes.forEach((mon, index) => {
+    if (mon.hp <= 0) return; // downed foes are hidden
     const sp = SPECIES[mon.speciesId];
     const chip = document.createElement('button');
     chip.type = 'button';
-    const down = mon.hp <= 0;
-    const selected = index === battle.selectedTarget && !down;
+    const blocked = mon.row === 'back' && frontUp;
+    const selected = index === battle.selectedTarget && !blocked;
     chip.className = [
       'formation-chip',
       mon.boss ? 'boss' : '',
-      down ? 'down' : '',
       selected ? 'selected' : '',
     ].filter(Boolean).join(' ');
     const pct = formationChipHp(mon);
@@ -2164,13 +2166,15 @@ function renderFormationField() {
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
       </div>
     `;
-    if (!down) {
-      chip.addEventListener('click', () => {
-        battle.selectedTarget = index;
-        battle.foe = battle.foes[index];
-        renderFormationField();
-      });
-    }
+    chip.addEventListener('click', () => {
+      if (blocked) {
+        showAppToast('前排还有敌人，无法选中后排');
+        return;
+      }
+      battle.selectedTarget = index;
+      battle.foe = battle.foes[index];
+      renderFormationField();
+    });
     if (mon.row === 'back') back.appendChild(chip);
     else front.appendChild(chip);
   });

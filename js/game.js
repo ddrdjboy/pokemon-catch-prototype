@@ -2165,9 +2165,11 @@ function renderFormationField() {
     ].filter(Boolean).join(' ');
     const pct = formationChipHp(mon);
     chip.innerHTML = `
-      <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
-      <span class="chip-name">${sp.name}</span>
-      <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
+      <img src="${pokemonUrl(sp.sprite, 'full')}" alt="" />
+      <div class="chip-meta">
+        <span class="chip-name">${sp.name}</span>
+        <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
+      </div>
     `;
     if (!down && !locked) {
       chip.addEventListener('click', () => {
@@ -2224,10 +2226,12 @@ function renderFormationParty() {
       mon.hp <= 0 ? 'fainted' : '',
     ].filter(Boolean).join(' ');
     chip.innerHTML = `
-      <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
       <span class="chip-tag">${slot.label}</span>
-      <span class="chip-name">${sp.name}</span>
-      <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
+      <img src="${pokemonUrl(sp.sprite, 'full')}" alt="" />
+      <div class="chip-meta">
+        <span class="chip-name">${sp.name}</span>
+        <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
+      </div>
     `;
     row.appendChild(chip);
   }

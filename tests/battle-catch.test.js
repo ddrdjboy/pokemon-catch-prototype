@@ -665,6 +665,7 @@ assert(otherHeavy.played === 'medium-fallback', 'heavy missing species uses medi
 
 console.log('audio tracks');
 assert(selectBattleTrack({ rift: true, playerLevel: 100, foeLevel: 200 }) === 'b2', 'rift uses b2');
+assert(selectBattleTrack({ boss: true, playerLevel: 100, foeLevel: 160 }) === 'b2', 'nether/boss uses b2');
 assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 5 }) === 'b0', 'lower foe uses b0');
 assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 10 }) === 'b0', 'equal uses b0');
 assert(selectBattleTrack({ rift: false, playerLevel: 10, foeLevel: 11 }) === 'b1', 'higher foe uses b1');

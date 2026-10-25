@@ -46,8 +46,9 @@ let pausedByVisibility = false;
 let musicEnabled = true;
 let sfxEnabled = true;
 
-export function selectBattleTrack({ rift, playerLevel, foeLevel }) {
-  if (rift) return 'b2';
+export function selectBattleTrack({ rift, boss, playerLevel, foeLevel }) {
+  // Rift raids and ghost-nether formation always use the boss battle theme.
+  if (rift || boss) return 'b2';
   return foeLevel > playerLevel ? 'b1' : 'b0';
 }
 
@@ -140,8 +141,8 @@ export function playExploreBgm() {
   setBgmSrc('explore', BGM.explore);
 }
 
-export function playBattleBgm({ rift, playerLevel, foeLevel }) {
-  const track = selectBattleTrack({ rift, playerLevel, foeLevel });
+export function playBattleBgm({ rift, boss, playerLevel, foeLevel }) {
+  const track = selectBattleTrack({ rift, boss, playerLevel, foeLevel });
   setBgmSrc(track, battleTrackUrl(track));
 }
 

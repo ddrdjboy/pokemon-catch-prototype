@@ -1137,6 +1137,11 @@ button.danger {
   border-color: #c9a227;
 }
 
+.map-card.nether {
+  border-color: #5b4b8a;
+  box-shadow: 0 0 0 1px rgba(120, 90, 180, 0.35);
+}
+
 .party-card.selected {
   outline: 2px solid var(--accent);
   box-shadow: 0 0 0 2px rgba(90, 180, 255, 0.35);

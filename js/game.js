@@ -10,8 +10,13 @@ import {
   TWIN_KEY_COST,
   TWIN_UNLOCK_LEVEL,
   TWIN_UNLOCK_COUNT,
+  NETHER_SEAL,
+  NETHER_SEAL_COST,
+  NETHER_UNLOCK_LEVEL,
+  NETHER_UNLOCK_COUNT,
   createPokemon,
   createRiftAllies,
+  createGhostNetherAllies,
   initialPlayerState,
   partyMaxLevel,
   partyOverLevelCount,
@@ -19,6 +24,7 @@ import {
   statsFor,
   trySpendRiftFruit,
   trySpendTwinKey,
+  trySpendNetherSeal,
   PARTY_CAP,
   ACTIVE_CAP,
   activeParty,
@@ -696,6 +702,7 @@ function hydrateState(parsed) {
   s.riftFruit = Math.max(0, Math.floor(Number(s.riftFruit) || 0));
   s.twinKeys = Math.max(0, Math.floor(Number(s.twinKeys) || 0));
   s.twinCleared = !!s.twinCleared;
+  s.netherSeals = Math.max(0, Math.floor(Number(s.netherSeals) || 0));
   if (s.catchStyle !== 'flick' && s.catchStyle !== 'sling') s.catchStyle = 'flick';
   delete s.partyStyle;
   s.battleAnim = normalizeBattleAnim(s.battleAnim);
@@ -751,6 +758,8 @@ function refreshHeader() {
   $('fruit-display').textContent = `🍇 ${state.riftFruit || 0}`;
   const twinEl = $('twin-key-display');
   if (twinEl) twinEl.textContent = `🔑 ${state.twinKeys || 0}`;
+  const netherEl = $('nether-seal-display');
+  if (netherEl) netherEl.textContent = `🕯 ${state.netherSeals || 0}`;
   $('charm-display').classList.toggle('hidden', !state.hasShinyCharm);
 }
 
@@ -803,13 +812,20 @@ function renderSelect() {
     const spiritLocked = map.spiritHall && !state.twinCleared;
     const twinLocked = map.twin
       && partyOverLevelCount(state.party, TWIN_UNLOCK_LEVEL) < TWIN_UNLOCK_COUNT;
-    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL) || twinLocked || spiritLocked;
+    const netherLocked = map.nether
+      && partyOverLevelCount(state.party, NETHER_UNLOCK_LEVEL) < NETHER_UNLOCK_COUNT;
+    const locked = (map.rift && partyMaxLevel(state.party) < RIFT_UNLOCK_LEVEL)
+      || twinLocked
+      || spiritLocked
+      || netherLocked;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${map.spiritHall ? ' spirit' : ''}${locked ? ' locked' : ''}`;
+    card.className = `map-card${map.rift ? ' rift' : ''}${map.twin ? ' twin' : ''}${map.spiritHall ? ' spirit' : ''}${map.nether ? ' nether' : ''}${locked ? ' locked' : ''}`;
     let meta;
     if (map.spiritHall) {
       meta = state.twinCleared ? '三层迷宫 · 已解锁' : '三层迷宫 · 需通关双子塔';
+    } else if (map.nether) {
+      meta = `阵型挑战 · 冥界符 ${state.netherSeals || 0}/${NETHER_SEAL_COST}`;
     } else {
       const levels = enc.flatMap((e) => encounterLevels(e));
       const lvMin = Math.min(...levels);
@@ -899,6 +915,21 @@ function renderShop() {
       if (state.coins < TWIN_KEY.price) return;
       state.coins -= TWIN_KEY.price;
       state.twinKeys = (state.twinKeys || 0) + 1;
+      afterPurchase();
+      renderSelect();
+    },
+  }));
+  shop.appendChild(shopItem({
+    title: NETHER_SEAL.name,
+    icon: '🕯️',
+    price: NETHER_SEAL.price,
+    owned: state.netherSeals || 0,
+    disabled: state.coins < NETHER_SEAL.price,
+    label: '进入幽灵冥界',
+    onBuy: () => {
+      if (state.coins < NETHER_SEAL.price) return;
+      state.coins -= NETHER_SEAL.price;
+      state.netherSeals = (state.netherSeals || 0) + 1;
       afterPurchase();
       renderSelect();
     },
@@ -1240,6 +1271,20 @@ function tryEnterMap(mapId) {
       setMapNote(spent.reason === 'level'
         ? `双子塔要队伍里至少 ${TWIN_UNLOCK_COUNT} 只宝可梦超过 ${TWIN_UNLOCK_LEVEL} 级（现有 ${have} 只）。`
         : `还差双子钥匙：需要 ${TWIN_KEY_COST} 个（现有 ${owned}）。可在商店花 ${TWIN_KEY.price} 金币买。`);
+      return;
+    }
+    save();
+    refreshHeader();
+  }
+  if (map.nether) {
+    const spent = trySpendNetherSeal(state, state.party);
+    if (!spent.ok) {
+      const owned = state.netherSeals || 0;
+      const have = partyOverLevelCount(state.party, NETHER_UNLOCK_LEVEL);
+      renderSelect();
+      setMapNote(spent.reason === 'level'
+        ? `幽灵冥界要队伍里至少 ${NETHER_UNLOCK_COUNT} 只宝可梦超过 ${NETHER_UNLOCK_LEVEL} 级（现有 ${have} 只）。`
+        : `还差冥界符：需要 ${NETHER_SEAL_COST} 个（现有 ${owned}）。可在商店花 ${NETHER_SEAL.price} 金币买。`);
       return;
     }
     save();

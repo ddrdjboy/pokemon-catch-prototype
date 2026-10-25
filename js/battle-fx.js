@@ -211,12 +211,47 @@ async function playLight(attackerEl, defenderEl, side) {
   ]);
 }
 
-const DASH_IN_MS = 200;
+const DASH_IN_MS = 240;
 const DASH_HOLD_MS = 90;
-const DASH_OUT_MS = 180;
+const DASH_OUT_MS = 200;
+
+/** Ease in-out for arc travel. */
+function dashEase(t) {
+  return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
+}
 
 /**
- * Rush attacker to just in front of defender, strike, then return home.
+ * Animate el along a quadratic bezier from → to with a sideways bulge.
+ * Coordinates are CSS translate px relative to the chip's home slot.
+ */
+function animateArcTranslate(el, fromX, fromY, toX, toY, ms, { bulge = 0, leanDeg = 0 } = {}) {
+  return new Promise((resolve) => {
+    const vx = toX - fromX;
+    const vy = toY - fromY;
+    const dist = Math.hypot(vx, vy) || 1;
+    const nx = -vy / dist;
+    const ny = vx / dist;
+    const cx = (fromX + toX) / 2 + nx * bulge;
+    const cy = (fromY + toY) / 2 + ny * bulge;
+    const t0 = performance.now();
+    function frame(now) {
+      const u = Math.min(1, (now - t0) / ms);
+      const t = dashEase(u);
+      const omt = 1 - t;
+      // Quadratic bezier: (1-t)^2 P0 + 2(1-t)t Ctrl + t^2 P1
+      const x = omt * omt * fromX + 2 * omt * t * cx + t * t * toX;
+      const y = omt * omt * fromY + 2 * omt * t * cy + t * t * toY;
+      const lean = leanDeg * Math.sin(Math.PI * t);
+      el.style.transform = `translate(${x}px, ${y}px) rotate(${lean}deg)`;
+      if (u < 1) requestAnimationFrame(frame);
+      else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+/**
+ * Rush attacker to just in front of defender along a slight arc, strike, then arc home.
  * Falls back to in-place lunge when geometry is unavailable.
  */
 async function playDashStrike(attackerEl, defenderEl, side, {
@@ -250,16 +285,19 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   const stopShort = Math.min(44, Math.max(22, dist * 0.28));
   const dx = fullDx - (fullDx / dist) * stopShort;
   const dy = fullDy - (fullDy / dist) * stopShort;
+  // Modest sideways bulge (~18% of travel, capped) for bounce/arc feel.
+  const bulge = Math.min(36, Math.max(14, dist * 0.18)) * (side === 'foe' ? -1 : 1);
+  const leanDeg = side === 'foe' ? -8 : 8;
 
   const prevTransition = attackerEl.style.transition;
   const prevTransform = attackerEl.style.transform;
   const prevZ = attackerEl.style.zIndex;
   attackerEl.classList.add('fx-dashing');
   attackerEl.style.zIndex = '24';
+  attackerEl.style.transition = 'none';
   void attackerEl.offsetWidth;
-  attackerEl.style.transition = `transform ${DASH_IN_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
-  attackerEl.style.transform = `translate(${dx}px, ${dy}px)`;
-  await wait(DASH_IN_MS);
+
+  await animateArcTranslate(attackerEl, 0, 0, dx, dy, DASH_IN_MS, { bulge, leanDeg });
 
   if (mode === 'heavy' && attackerSpeciesId) {
     await playFighterAttack(attackerEl, attackerSpeciesId, { side });
@@ -272,9 +310,11 @@ async function playDashStrike(attackerEl, defenderEl, side, {
     mode === 'light' ? wait(DASH_HOLD_MS) : playBurst(defenderEl, moveType, 280),
   ]);
 
-  attackerEl.style.transition = `transform ${DASH_OUT_MS}ms ease-in`;
-  attackerEl.style.transform = prevTransform || 'none';
-  await wait(DASH_OUT_MS);
+  // Arc back home with mirrored bulge so the hop reads continuous.
+  await animateArcTranslate(attackerEl, dx, dy, 0, 0, DASH_OUT_MS, {
+    bulge: -bulge * 0.65,
+    leanDeg: -leanDeg * 0.6,
+  });
 
   attackerEl.classList.remove('fx-dashing');
   attackerEl.style.transition = prevTransition;

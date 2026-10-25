@@ -3277,7 +3277,7 @@ function settleThrow(hit) {
 }
 
 function markCleared() {
-  if (pendingEncounter?.squad || pendingEncounter?.dual) return;
+  if (pendingEncounter?.squad || pendingEncounter?.dual || pendingEncounter?.formation) return;
   if (!pendingEncounter?.id) return;
   state.cleared[`${currentMapId}:${pendingEncounter.id}`] = true;
 }

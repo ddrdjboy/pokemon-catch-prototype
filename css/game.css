@@ -1309,6 +1309,27 @@ button.danger {
   filter: grayscale(0.8);
 }
 
+/* KO: blink then fade out before empty/faint settle. */
+.formation-chip.fx-death {
+  animation: fx-death-blink-fade 720ms ease-in forwards;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.formation-chip.fx-death img {
+  filter: grayscale(0.35) brightness(1.35);
+}
+
+@keyframes fx-death-blink-fade {
+  0% { opacity: 1; }
+  12% { opacity: 0.12; }
+  24% { opacity: 1; }
+  36% { opacity: 0.12; }
+  48% { opacity: 0.9; }
+  64% { opacity: 0.35; }
+  100% { opacity: 0; }
+}
+
 .formation-chip.player-chip {
   cursor: default;
 }
@@ -1636,6 +1657,7 @@ button.danger {
   .formation-chip.fx-lunge-right img,
   .formation-chip.fx-lunge-left img,
   .formation-chip.fx-hit img,
+  .formation-chip.fx-death,
   .fx-burst.play,
   .ally-chip.fx-chip-flash {
     animation-duration: 1ms !important;

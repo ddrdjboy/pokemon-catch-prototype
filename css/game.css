@@ -1142,6 +1142,78 @@ button.danger {
   box-shadow: 0 0 0 1px rgba(120, 90, 180, 0.35);
 }
 
+.foe-formation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.foe-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.foe-row .foe-chip {
+  width: 64px;
+  text-align: center;
+  font-size: 11px;
+  opacity: 1;
+  cursor: pointer;
+  background: #15202b;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.foe-row .foe-chip img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.foe-row .foe-chip .hp-bar {
+  height: 6px;
+  margin-top: 2px;
+}
+
+.foe-row .foe-chip.locked {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.foe-row .foe-chip.boss {
+  width: 76px;
+  outline: 1px solid #c44;
+}
+
+.foe-row .foe-chip.selected {
+  outline: 2px solid #f5d76e;
+}
+
+.foe-row .foe-chip.down {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+#battle-field.formation-mode .fighter.foe {
+  display: none;
+}
+
+#battle-field.formation-mode #ally-row {
+  display: flex;
+  flex-wrap: wrap;
+  grid-template-columns: none;
+}
+
+#battle-field.formation-mode #ally-row .ally-chip {
+  flex: 1 1 22%;
+  min-width: 72px;
+}
+
 .party-card.selected {
   outline: 2px solid var(--accent);
   box-shadow: 0 0 0 2px rgba(90, 180, 255, 0.35);

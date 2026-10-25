@@ -62,6 +62,8 @@ import {
   resolveSquadItemTurn,
   resolveTurn,
   resolveFoeOnlyTurn,
+  resolveFormationTurn,
+  legalFormationTargets,
 } from './battle.js';
 import {
   hasFighterFrames,
@@ -182,6 +184,7 @@ function wait(ms) {
 }
 
 function attackLabel() {
+  if (battle?.formation) return '阵型攻击';
   if (battle?.allies) return '小队攻击';
   if (battle?.dual) return '双打攻击';
   return '攻击';
@@ -194,6 +197,10 @@ function ensureBattleStateOnField() {
     battle.foes = battle.foes.map((mon) => withBattleState(mon));
     battle.player = battle.players[0];
     battle.foe = battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+  } else if (battle.formation) {
+    battle.player = withBattleState(battle.player);
+    if (battle.allies) battle.allies = battle.allies.map((ally) => withBattleState(ally));
+    if (battle.foes) battle.foes = battle.foes.map((mon) => withBattleState(mon));
   } else {
     battle.player = withBattleState(battle.player);
     battle.foe = withBattleState(battle.foe);
@@ -352,6 +359,27 @@ function isBattleScreenActive() {
 function updateItemButton() {
   const btn = $('btn-items');
   if (!btn) return;
+function formationPlayerMove() {
+  if (!battle?.player) return null;
+  return SPECIES[battle.player.speciesId]?.move || null;
+}
+
+function formationPierce() {
+  return !!formationPlayerMove()?.pierce;
+}
+
+function ensureFormationTarget() {
+  if (!battle?.formation || !battle.foes) return;
+  const legal = legalFormationTargets(battle.foes, { pierce: formationPierce() });
+  if (!legal.length) {
+    battle.selectedTarget = -1;
+    return;
+  }
+  const cur = battle.foes[battle.selectedTarget];
+  if (cur && legal.includes(cur)) return;
+  battle.selectedTarget = battle.foes.indexOf(legal[0]);
+}
+
   btn.disabled = false;
 }
 
@@ -1738,7 +1766,9 @@ function openMap(mapId) {
     const key = `${mapId}:${enc.id}`;
     const cleared = !!state.cleared[key];
     const trainer = enc.kind === 'trainer';
-    const lead = trainer ? enc.team[0] : (enc.dual ? enc.foes[0] : enc);
+    const lead = trainer
+      ? enc.team[0]
+      : (enc.dual || enc.formation ? enc.foes[0] : enc);
     const sp = SPECIES[lead.speciesId];
     const shiny = trainer ? enc.team.some((m) => m.shiny) : enc.shiny;
     const boss = trainer ? enc.team.some((m) => m.boss) : enc.boss;
@@ -1752,22 +1782,26 @@ function openMap(mapId) {
     });
     el.style.left = `${enc.x}%`;
     el.style.top = `${enc.y}%`;
-    const who = enc.dual
-      ? '双打挑战'
-      : enc.squad
-        ? '小队挑战'
+    const who = enc.formation
+      ? '阵型战'
+      : enc.dual
+        ? '双打挑战'
+        : enc.squad
+          ? '小队挑战'
+          : trainer
+            ? `训练家 ${enc.trainerName}`
+            : '野生';
+    const detail = enc.formation
+      ? enc.foes.filter((f) => f.boss).map((f) => SPECIES[f.speciesId].name).join('、')
+      : enc.dual
+        ? enc.foes.map((f) => SPECIES[f.speciesId].name).join(' & ')
         : trainer
-          ? `训练家 ${enc.trainerName}`
-          : '野生';
-    const detail = enc.dual
-      ? enc.foes.map((f) => SPECIES[f.speciesId].name).join(' & ')
-      : trainer
-        ? `${enc.team.length}只`
-        : `${sp.name} Lv.${enc.level}`;
+          ? `${enc.team.length}只`
+          : `${sp.name} Lv.${enc.level}`;
     el.innerHTML = `
       <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
       <div class="label">
-        ${who}<br/>${detail}${enc.dual ? `<br/>Lv.${enc.level}` : ''}
+        ${who}<br/>${detail}${enc.dual ? `<br/>Lv.${enc.level}` : ''}${enc.formation ? `<br/>Lv.${enc.foes.find((f) => f.boss)?.level || enc.foes[0].level}` : ''}
         ${boss ? '<br/><span class="tag boss">头目</span>' : ''}
         ${shiny ? '<span class="tag shiny">闪光</span>' : ''}
         ${sp.mega ? '<span class="tag mega">超级</span>' : ''}
@@ -1801,6 +1835,17 @@ function prepareEncounter(enc) {
       foeIndex: 0,
     };
   }
+  if (enc.formation) {
+    const foes = enc.foes.map((m) => ({ ...m, hp: m.maxHp }));
+    const lead = foes.find((f) => f.boss) || foes[0];
+    return {
+      ...enc,
+      foes,
+      activeFoe: { ...lead },
+      foeTeam: null,
+      foeIndex: 0,
+    };
+  }
   const foe = { ...enc.pokemon, hp: enc.pokemon.maxHp };
   return { ...enc, activeFoe: foe, foeTeam: null, foeIndex: 0 };
 }
@@ -1812,6 +1857,10 @@ function foeIntro(enc) {
   if (enc.dual) {
     const names = enc.foes.map((f) => `${SPECIES[f.speciesId].name} Lv.${enc.level}`).join(' & ');
     return `双打对手：${names}（头目）。请选出 2 只宝可梦同时出战。`;
+  }
+  if (enc.formation) {
+    const bosses = enc.foes.filter((f) => f.boss).map((f) => SPECIES[f.speciesId].name).join('、');
+    return `阵型战：前排封锁，击败全部敌人。头目：${bosses}。选出 1 只宝可梦出战（4 只电脑同伴助战）。`;
   }
   const sp = SPECIES[enc.speciesId];
   const tags = `${enc.boss ? '（头目）' : ''}${enc.shiny ? '（闪光）' : ''}${sp.mega ? '（超级进化）' : ''}`;
@@ -1927,12 +1976,16 @@ function startBattle(playerMon, { freshLog = true } = {}) {
     fillDualSlot(playerMon);
     return;
   }
+  if (pendingEncounter?.formation && pickMode !== 'switch') {
+    startFormationBattle(playerMon);
+    return;
+  }
   const player = { ...playerMon };
   const foe = { ...pendingEncounter.activeFoe };
   const allies = pendingEncounter.squad
     ? (freshLog ? createRiftAllies() : battle.allies.map((ally) => ({ ...ally })))
     : null;
-  battle = { player, foe, playerUid: playerMon.uid, allies, dual: false };
+  battle = { player, foe, playerUid: playerMon.uid, allies, dual: false, formation: false };
   renderBattle();
   if (freshLog) {
     $('battle-log').innerHTML = '<p>对战开始！</p>';
@@ -1946,6 +1999,33 @@ function startBattle(playerMon, { freshLog = true } = {}) {
   resetAttackButton();
   showScreen('battle');
   preloadBattleFighterFrames();
+}
+
+function startFormationBattle(playerMon) {
+  const player = { ...playerMon };
+  const foes = pendingEncounter.foes.map((mon) => ({ ...mon, hp: mon.maxHp }));
+  pendingEncounter.foes = foes.map((mon) => ({ ...mon }));
+  const bossCatchPool = foes
+    .filter((f) => f.boss)
+    .map((f) => ({ ...f, hp: f.maxHp }));
+  const firstFront = foes.findIndex((f) => f.row === 'front' && f.hp > 0);
+  battle = {
+    formation: true,
+    dual: false,
+    player,
+    playerUid: playerMon.uid,
+    allies: createGhostNetherAllies(),
+    foes,
+    foe: foes[firstFront >= 0 ? firstFront : 0],
+    selectedTarget: firstFront >= 0 ? firstFront : 0,
+    bossCatchPool,
+  };
+  ensureFormationTarget();
+  renderBattle();
+  $('battle-log').innerHTML = '<p>阵型对战开始！</p>';
+  appendLog('4 只电脑宝可梦加入了小队。前排未清前无法锁定后排。');
+  resetAttackButton();
+  showScreen('battle');
 }
 
 function fillDualSlot(playerMon) {
@@ -2019,9 +2099,21 @@ function renderFighterSlot(side, index, mon) {
 function renderBattle() {
   const field = $('battle-field');
   const dual = !!battle?.dual;
-  field?.classList.toggle('dual', dual);
+  const formation = !!battle?.formation;
+  field?.classList.toggle('dual', dual && !formation);
+  field?.classList.toggle('formation-mode', formation);
   for (const el of document.querySelectorAll('.dual-only')) {
-    el.classList.toggle('hidden', !dual);
+    el.classList.toggle('hidden', !dual || formation);
+  }
+  for (const el of document.querySelectorAll('.formation-only')) {
+    el.classList.toggle('hidden', !formation);
+  }
+  const formEl = $('foe-formation');
+  if (formEl) formEl.classList.toggle('hidden', !formation);
+
+  if (formation) {
+    renderFormationField();
+    return;
   }
 
   if (dual) {
@@ -2038,6 +2130,59 @@ function renderBattle() {
   const { player, foe } = battle;
   renderFighterSlot('foe', 0, foe);
   renderFighterSlot('player', 0, player);
+  renderAllies();
+}
+
+function renderFormationField() {
+  ensureFormationTarget();
+  const back = $('foe-row-back');
+  const front = $('foe-row-front');
+  if (!back || !front) return;
+  back.innerHTML = '';
+  front.innerHTML = '';
+  const legal = legalFormationTargets(battle.foes, { pierce: formationPierce() });
+  const legalSet = new Set(legal);
+
+  battle.foes.forEach((mon, index) => {
+    const sp = SPECIES[mon.speciesId];
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    const down = mon.hp <= 0;
+    const locked = !down && !legalSet.has(mon);
+    const selected = index === battle.selectedTarget && !down;
+    chip.className = [
+      'foe-chip',
+      mon.boss ? 'boss' : '',
+      down ? 'down' : '',
+      locked ? 'locked' : '',
+      selected ? 'selected' : '',
+    ].filter(Boolean).join(' ');
+    const pct = Math.max(0, Math.round((mon.hp / mon.maxHp) * 100));
+    chip.innerHTML = `
+      <img src="${spriteUrl(sp.sprite)}" alt="" />
+      <div>${sp.name}</div>
+      <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
+    `;
+    if (!down && !locked) {
+      chip.addEventListener('click', () => {
+        battle.selectedTarget = index;
+        battle.foe = battle.foes[index];
+        renderFormationField();
+      });
+    }
+    if (mon.row === 'back') back.appendChild(chip);
+    else front.appendChild(chip);
+  });
+
+  renderFighterSlot('player', 0, battle.player);
+  battle.foe = battle.foes[battle.selectedTarget] || battle.foes.find((f) => f.hp > 0) || battle.foes[0];
+  const next = $('formation-next');
+  if (next) {
+    const sel = battle.foes[battle.selectedTarget];
+    next.textContent = sel && sel.hp > 0
+      ? `锁定：${SPECIES[sel.speciesId].name}${sel.boss ? '（头目）' : ''} · ${sel.row === 'front' ? '前排' : '后排'}`
+      : '选择可攻击的目标';
+  }
   renderAllies();
 }
 
@@ -2083,6 +2228,17 @@ function syncBattleHp() {
     }
     pendingEncounter.foes = battle.foes.map((mon) => ({ ...mon }));
     pendingEncounter.activeFoe = { ...(battle.foes.find((f) => f.hp > 0) || battle.foes[0]) };
+    return;
+  }
+  if (battle?.formation) {
+    const member = state.party.find((p) => p.uid === battle.playerUid);
+    if (member) member.hp = battle.player.hp;
+    pendingEncounter.foes = battle.foes.map((mon) => ({ ...mon }));
+    pendingEncounter.activeFoe = {
+      ...(battle.foes[battle.selectedTarget]
+        || battle.foes.find((f) => f.hp > 0)
+        || battle.foes[0]),
+    };
     return;
   }
   const member = state.party.find((p) => p.uid === battle.playerUid);
@@ -2395,9 +2551,55 @@ function finishDualTurnOutcome(turn) {
   resetAttackButton();
 }
 
+function finishFormationTurnOutcome(turn) {
+  if (turn.result === 'win') {
+    appendLog('胜利！阵型溃散！');
+    const evolved = awardFormationXp();
+    finishBattleWin(evolved);
+    return;
+  }
+  if (turn.result === 'lose' || turn.result === 'draw') {
+    appendLog(turn.result === 'draw'
+      ? '同归于尽…你败北了。'
+      : '你的宝可梦倒下了…阵型战失败。');
+    $('btn-attack').disabled = true;
+    $('btn-flee-battle').disabled = true;
+    setTimeout(() => leaveBattle(), 900);
+    return;
+  }
+  resetAttackButton();
+}
+
+function awardFormationXp() {
+  const fighter = state.party.find((p) => p.uid === battle.playerUid);
+  if (!fighter) return false;
+  const pool = battle.bossCatchPool?.length
+    ? battle.bossCatchPool
+    : (battle.foes || []).filter((f) => f.boss);
+  const totalLevel = pool.reduce((sum, foe) => sum + foe.level, 0);
+  const dummy = {
+    level: Math.floor(totalLevel / Math.max(1, pool.length)) || (battle.foe?.level || 1),
+    boss: true,
+  };
+  const wasFainted = fighter.hp <= 0;
+  const amount = xpReward(dummy, { trainer: false });
+  const xpLogs = gainExperience(fighter, amount);
+  if (wasFainted) fighter.hp = 0;
+  for (const line of xpLogs) appendLog(line);
+  if (!wasFainted) {
+    battle.player = { ...fighter };
+    renderBattle();
+  }
+  return xpLogs.some((line) => line.includes('进化'));
+}
+
 function finishTurnOutcome(turn) {
   if (battle?.dual) {
     finishDualTurnOutcome(turn);
+    return;
+  }
+  if (battle?.formation) {
+    finishFormationTurnOutcome(turn);
     return;
   }
   if (battle.foe.hp <= 0) grantRiftFruit(battle.foe);
@@ -2575,6 +2777,15 @@ async function onUseItem(itemId) {
       finishTurnOutcome(turn);
       return;
     }
+    if (battle.formation) {
+      const turn = resolveFormationTurn(battle.player, battle.allies, battle.foes, {
+        playerTargetIndex: battle.selectedTarget,
+        playerMove: formationPlayerMove(),
+      });
+      await playFormationTurnHits(turn);
+      finishTurnOutcome(turn);
+      return;
+    }
     const startPlayer = { ...battle.player };
     const startFoe = { ...battle.foe };
     const startAllies = battle.allies ? battle.allies.map((ally) => ({ ...ally })) : null;
@@ -2685,6 +2896,24 @@ function openItemsUi() {
   $('items-step-target').classList.add('hidden');
   renderItemsModalList();
   $('items-modal').classList.remove('hidden');
+}
+
+async function playFormationTurnHits(turn) {
+  for (let i = 0; i < turn.logs.length; i += 1) {
+    appendLog(turn.logs[i].text);
+    if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+  }
+  battle.player = turn.player;
+  battle.allies = turn.allies.map((ally) => ({ ...ally }));
+  battle.foes = turn.foes.map((mon) => ({ ...mon }));
+  ensureFormationTarget();
+  syncBattleHp();
+  renderBattle();
+  if (turn.result === 'win') {
+    await waitForContinue('敌人全灭！');
+  } else if (turn.result === 'lose' || turn.result === 'draw') {
+    await waitForContinue(`${SPECIES[battle.player.speciesId].name} 倒下了！`);
+  }
 }
 
 function awardXp(foe) {
@@ -2817,9 +3046,54 @@ function finishBattleWin(evolved) {
   for (const p of state.party) p.hp = p.maxHp;
   save();
   setTimeout(() => {
-    if (enc.kind === 'trainer' || enc.dual) openCatchPick();
+    if (enc.formation) beginNetherCatchQueue();
+    else if (enc.kind === 'trainer' || enc.dual) openCatchPick();
     else enterCatch(enc);
   }, evolved ? 1400 : 900);
+}
+
+/** Sequential catch/skip for the 3 formation bosses (dual-style pick + skip). */
+function beginNetherCatchQueue() {
+  const pool = (battle?.bossCatchPool?.length
+    ? battle.bossCatchPool
+    : (pendingEncounter?.foes || []).filter((f) => f.boss))
+    .map((f) => ({ ...f, hp: f.maxHp }));
+  pendingEncounter.formationCatchQueue = pool;
+  advanceFormationCatch();
+}
+
+function advanceFormationCatch() {
+  const queue = pendingEncounter?.formationCatchQueue;
+  if (!queue?.length) {
+    markCleared();
+    save();
+    if (catchCtrl) {
+      catchCtrl.destroy();
+      catchCtrl = null;
+    }
+    openMap(currentMapId);
+    return;
+  }
+  const next = queue[0];
+  pickMode = 'formation-catch';
+  $('btn-cancel-pick').classList.remove('hidden');
+  $('btn-cancel-pick').textContent = '跳过';
+  $('pick-title').textContent = `捕捉头目？（剩余 ${queue.length}/3）`;
+  $('pick-foe-info').textContent = `点选开始捕捉 ${SPECIES[next.speciesId].name}，或点「跳过」处理下一只。`;
+  renderParty($('pick-party'), true, (mon) => {
+    pendingEncounter.activeFoe = { ...mon, hp: mon.maxHp };
+    enterCatch(pendingEncounter);
+  }, [next]);
+  showScreen('pick');
+}
+
+function skipFormationCatchOne() {
+  if (!pendingEncounter?.formationCatchQueue?.length) {
+    advanceFormationCatch();
+    return;
+  }
+  pendingEncounter.formationCatchQueue.shift();
+  advanceFormationCatch();
 }
 
 function ballTag(ball) {
@@ -2989,11 +3263,11 @@ function settleThrow(hit) {
 
 function markCleared() {
   if (pendingEncounter?.squad || pendingEncounter?.dual) return;
+  if (!pendingEncounter?.id) return;
   state.cleared[`${currentMapId}:${pendingEncounter.id}`] = true;
 }
 
 function claimPokemon(foe) {
-  markCleared();
   const mon = createPokemon(foe.speciesId, foe.level, {
     shiny: foe.shiny,
     boss: foe.boss,
@@ -3004,17 +3278,32 @@ function claimPokemon(foe) {
     const result = $('catch-result');
     result.textContent = `${result.textContent} ${evoMsgs.join(' ')}`;
   }
+  const inFormationQueue = !!pendingEncounter?.formationCatchQueue?.length;
+  if (!inFormationQueue) markCleared();
   save();
   setTimeout(() => {
     if (catchCtrl) {
       catchCtrl.destroy();
       catchCtrl = null;
     }
+    if (inFormationQueue) {
+      pendingEncounter.formationCatchQueue.shift();
+      advanceFormationCatch();
+      return;
+    }
     resumeAfterMazeCatch();
   }, 1000);
 }
 
 function skipCatch() {
+  if (pendingEncounter?.formationCatchQueue?.length) {
+    if (catchCtrl) {
+      catchCtrl.destroy();
+      catchCtrl = null;
+    }
+    skipFormationCatchOne();
+    return;
+  }
   markCleared();
   save();
   if (catchCtrl) {
@@ -3061,7 +3350,8 @@ $('btn-cancel-pick').addEventListener('click', () => {
     enterDualAction(dualCmdSlot);
     return;
   }
-  if (pickMode === 'catch') skipCatch();
+  if (pickMode === 'formation-catch') skipFormationCatchOne();
+  else if (pickMode === 'catch') skipCatch();
   else returnAfterMazeBattle();
 });
 $('btn-attack')?.addEventListener('click', onAttack);

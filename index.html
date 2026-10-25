@@ -4,27 +4,27 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>宝可梦对战捕捉</title>
-  <link rel="stylesheet" href="css/game.css?v=nether3" />
+  <link rel="stylesheet" href="css/game.css?v=nether4" />
   <script type="importmap">
   {
     "imports": {
-      "./js/game.js": "./js/game.js?v=nether3",
-      "./js/assets.js": "./js/assets.js?v=nether3",
-      "./js/items.js": "./js/items.js?v=nether3",
-      "./js/audio.js": "./js/audio.js?v=nether3",
-      "./js/data.js": "./js/data.js?v=nether3",
-      "./js/battle.js": "./js/battle.js?v=nether3",
-      "./js/battle-moves.js": "./js/battle-moves.js?v=nether3",
-      "./js/battle-fx.js": "./js/battle-fx.js?v=nether3",
-      "./js/catch.js": "./js/catch.js?v=nether3",
-      "./js/final-move-kits.js": "./js/final-move-kits.js?v=nether3",
-      "./js/generated-content.js": "./js/generated-content.js?v=nether3",
-      "./js/region-content.js": "./js/region-content.js?v=nether3",
-      "./js/maze.js": "./js/maze.js?v=nether3",
-      "./js/maze-minimap.js": "./js/maze-minimap.js?v=nether3",
-      "./js/party-detail.js": "./js/party-detail.js?v=nether3",
-      "./js/boss-ui.js": "./js/boss-ui.js?v=nether3",
-      "./js/level.js": "./js/level.js?v=nether3"
+      "./js/game.js": "./js/game.js?v=nether4",
+      "./js/assets.js": "./js/assets.js?v=nether4",
+      "./js/items.js": "./js/items.js?v=nether4",
+      "./js/audio.js": "./js/audio.js?v=nether4",
+      "./js/data.js": "./js/data.js?v=nether4",
+      "./js/battle.js": "./js/battle.js?v=nether4",
+      "./js/battle-moves.js": "./js/battle-moves.js?v=nether4",
+      "./js/battle-fx.js": "./js/battle-fx.js?v=nether4",
+      "./js/catch.js": "./js/catch.js?v=nether4",
+      "./js/final-move-kits.js": "./js/final-move-kits.js?v=nether4",
+      "./js/generated-content.js": "./js/generated-content.js?v=nether4",
+      "./js/region-content.js": "./js/region-content.js?v=nether4",
+      "./js/maze.js": "./js/maze.js?v=nether4",
+      "./js/maze-minimap.js": "./js/maze-minimap.js?v=nether4",
+      "./js/party-detail.js": "./js/party-detail.js?v=nether4",
+      "./js/boss-ui.js": "./js/boss-ui.js?v=nether4",
+      "./js/level.js": "./js/level.js?v=nether4"
     }
   }
   </script>
@@ -139,11 +139,16 @@
             <div id="foe-sprite-wrap-1" class="sprite-wrap"></div>
           </div>
           <div id="foe-formation" class="foe-formation hidden">
-            <div id="foe-row-back" class="foe-row back"></div>
-            <div id="foe-row-front" class="foe-row front"></div>
+            <div class="formation-side-label foe-side">敌方</div>
+            <div id="foe-row-back" class="formation-row back"></div>
+            <div id="foe-row-front" class="formation-row front"></div>
           </div>
           <p id="formation-next" class="hint formation-only hidden"></p>
           <div id="ally-row" class="ally-row hidden"></div>
+          <div id="player-formation" class="player-formation formation-only hidden">
+            <div class="formation-side-label player-side">我方 · 玩家居中</div>
+            <div id="player-row" class="formation-row player-row"></div>
+          </div>
           <div class="fighter player" data-slot="0">
             <div id="player-sprite-wrap" class="sprite-wrap"></div>
             <div class="name-row">
@@ -269,6 +274,6 @@
       <button id="btn-close-settings" type="button">关闭</button>
     </div>
   </div>
-  <script type="module" src="js/game.js?v=nether3"></script>
+  <script type="module" src="js/game.js?v=nether4"></script>
 </body>
 </html>

@@ -30,7 +30,7 @@ import {
   canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
   createGhostNetherAllies,
   trySpendNetherSeal,
-  NETHER_UNLOCK_LEVEL, NETHER_UNLOCK_COUNT, NETHER_SEAL_COST, NETHER_SEAL, NETHER_BOSS_LEVEL,
+  NETHER_UNLOCK_LEVEL, NETHER_UNLOCK_COUNT, NETHER_SEAL_COST, NETHER_SEAL, NETHER_BOSS_LEVEL, NETHER_BOSS_MID_LEVEL,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { partyIndividualView } from '../js/party-detail.js';
@@ -460,7 +460,14 @@ assert(SPIRIT_HALL_BOSS_LEVELS[1] === 225 && SPIRIT_HALL_BOSS_LEVELS[2] === 250 
 console.log('ghost nether');
 assert(MAPS.ghost_nether?.nether && MAPS.ghost_nether.encounters.length === 1, 'ghost nether single fight');
 assert(NETHER_SEAL.price === 1 && NETHER_SEAL_COST === 1 && NETHER_UNLOCK_COUNT === 2, 'nether seal shop and gate');
-assert(NETHER_UNLOCK_LEVEL === 100 && NETHER_BOSS_LEVEL === 200, 'nether unlock and boss level');
+assert(NETHER_UNLOCK_LEVEL === 100 && NETHER_BOSS_LEVEL === 250 && NETHER_BOSS_MID_LEVEL === 300, 'nether unlock and boss levels');
+{
+  const bosses = rollEncounter(MAPS.ghost_nether.encounters[0], { hasCharm: false, bossChance: 0 })
+    .foes.filter((f) => f.boss);
+  assert(bosses.length === 3, 'three nether bosses');
+  assert(bosses[0].level === 250 && bosses[2].level === 250, 'side bosses lv250');
+  assert(bosses[1].level === 300, 'center boss lv300');
+}
 for (const id of ['remake_darkrai', 'remake_cresselia', 'remake_lunala']) {
   assert(SPECIES[id]?.name?.startsWith('改·') && SPECIES[id].sprite, `${id} remake species`);
 }

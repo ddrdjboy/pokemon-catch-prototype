@@ -760,7 +760,10 @@ const TWIN_MAP = {
 export const NETHER_UNLOCK_LEVEL = 100;
 export const NETHER_UNLOCK_COUNT = 2;
 export const NETHER_SEAL_COST = 1;
-export const NETHER_BOSS_LEVEL = 200;
+/** Side remake bosses (left/right of the back triad). */
+export const NETHER_BOSS_LEVEL = 250;
+/** Center remake boss (middle of the back triad). */
+export const NETHER_BOSS_MID_LEVEL = 300;
 export const NETHER_FRONT_LEVEL = 160;
 export const NETHER_BACK_MINION_LEVEL = 180;
 export const NETHER_SEAL = {
@@ -817,7 +820,7 @@ const GHOST_NETHER_MAP = {
       back: [
         { ...GHOST_NETHER_MINIONS.back[0], level: NETHER_BACK_MINION_LEVEL },
         { ...GHOST_NETHER_BOSSES[0], level: NETHER_BOSS_LEVEL, boss: true },
-        { ...GHOST_NETHER_BOSSES[1], level: NETHER_BOSS_LEVEL, boss: true },
+        { ...GHOST_NETHER_BOSSES[1], level: NETHER_BOSS_MID_LEVEL, boss: true },
         { ...GHOST_NETHER_BOSSES[2], level: NETHER_BOSS_LEVEL, boss: true },
         { ...GHOST_NETHER_MINIONS.back[1], level: NETHER_BACK_MINION_LEVEL },
       ],

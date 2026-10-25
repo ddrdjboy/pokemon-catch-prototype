@@ -2147,10 +2147,19 @@ function renderFormationField() {
   const frontUp = battle.foes.some((f) => f.hp > 0 && f.row === 'front');
 
   battle.foes.forEach((mon, index) => {
-    if (mon.hp <= 0) return; // downed foes are hidden
-    const sp = SPECIES[mon.speciesId];
     const chip = document.createElement('button');
     chip.type = 'button';
+    // Keep the slot so surviving foes do not shift into the empty space.
+    if (mon.hp <= 0) {
+      chip.className = 'formation-chip down';
+      chip.disabled = true;
+      chip.setAttribute('aria-hidden', 'true');
+      chip.innerHTML = '<div class="chip-art"></div><div class="chip-meta"></div>';
+      if (mon.row === 'back') back.appendChild(chip);
+      else front.appendChild(chip);
+      return;
+    }
+    const sp = SPECIES[mon.speciesId];
     const blocked = mon.row === 'back' && frontUp;
     const selected = index === battle.selectedTarget && !blocked;
     chip.className = [

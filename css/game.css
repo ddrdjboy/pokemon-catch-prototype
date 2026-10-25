@@ -1279,7 +1279,17 @@ button.danger {
     drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
-.formation-chip.down,
+/* Foe KO: invisible but still occupies the 1/5 slot. */
+.formation-chip.down {
+  opacity: 0;
+  pointer-events: none;
+  cursor: default;
+}
+
+.formation-chip.down .chip-art {
+  min-height: clamp(64px, 20vw, 100px);
+}
+
 .formation-chip.fainted {
   opacity: 0.22;
   pointer-events: none;

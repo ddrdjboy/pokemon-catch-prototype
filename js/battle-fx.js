@@ -211,9 +211,9 @@ async function playLight(attackerEl, defenderEl, side) {
   ]);
 }
 
-const DASH_IN_MS = 240;
+const DASH_IN_MS = 280;
 const DASH_HOLD_MS = 90;
-const DASH_OUT_MS = 200;
+const DASH_OUT_MS = 220;
 
 /** Ease in-out for arc travel. */
 function dashEase(t) {
@@ -221,18 +221,14 @@ function dashEase(t) {
 }
 
 /**
- * Animate el along a quadratic bezier from → to with a sideways bulge.
+ * Animate el along a quadratic bezier from → to.
+ * `arcHeight` lifts the midpoint upward (screen -Y) so the path reads as a clear hop, not a line.
  * Coordinates are CSS translate px relative to the chip's home slot.
  */
-function animateArcTranslate(el, fromX, fromY, toX, toY, ms, { bulge = 0, leanDeg = 0 } = {}) {
+function animateArcTranslate(el, fromX, fromY, toX, toY, ms, { arcHeight = 0, leanDeg = 0 } = {}) {
   return new Promise((resolve) => {
-    const vx = toX - fromX;
-    const vy = toY - fromY;
-    const dist = Math.hypot(vx, vy) || 1;
-    const nx = -vy / dist;
-    const ny = vx / dist;
-    const cx = (fromX + toX) / 2 + nx * bulge;
-    const cy = (fromY + toY) / 2 + ny * bulge;
+    const cx = (fromX + toX) / 2;
+    const cy = (fromY + toY) / 2 - arcHeight;
     const t0 = performance.now();
     function frame(now) {
       const u = Math.min(1, (now - t0) / ms);
@@ -295,9 +291,9 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   const stopShort = Math.min(44, Math.max(22, dist * 0.28));
   const dx = fullDx - (fullDx / dist) * stopShort;
   const dy = fullDy - (fullDy / dist) * stopShort;
-  // Modest sideways bulge (~18% of travel, capped) for bounce/arc feel.
-  const bulge = Math.min(36, Math.max(14, dist * 0.18)) * (side === 'foe' ? -1 : 1);
-  const leanDeg = side === 'foe' ? -8 : 8;
+  // Strong upward hop (~42% of travel) so the path reads as an arc, not a straight dash.
+  const arcHeight = Math.min(96, Math.max(42, dist * 0.42));
+  const leanDeg = side === 'foe' ? -10 : 10;
 
   const prevTransition = mover.style.transition;
   const prevTransform = mover.style.transform;
@@ -309,7 +305,7 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   mover.style.transition = 'none';
   void mover.offsetWidth;
 
-  await animateArcTranslate(mover, 0, 0, dx, dy, DASH_IN_MS, { bulge, leanDeg });
+  await animateArcTranslate(mover, 0, 0, dx, dy, DASH_IN_MS, { arcHeight, leanDeg });
 
   if (mode === 'heavy' && attackerSpeciesId) {
     await playFighterAttack(attackerEl, attackerSpeciesId, { side });
@@ -322,9 +318,9 @@ async function playDashStrike(attackerEl, defenderEl, side, {
     mode === 'light' ? wait(DASH_HOLD_MS) : playBurst(defenderEl, moveType, 280),
   ]);
 
-  // Arc back home with mirrored bulge so the hop reads continuous.
+  // Arc back home with the same upward hop so return also reads curved.
   await animateArcTranslate(mover, dx, dy, 0, 0, DASH_OUT_MS, {
-    bulge: -bulge * 0.65,
+    arcHeight: arcHeight * 0.75,
     leanDeg: -leanDeg * 0.6,
   });
 

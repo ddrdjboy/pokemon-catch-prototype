@@ -2938,7 +2938,8 @@ function renderItemsModalList() {
 
 function openItemsTargetPicker(itemId) {
   const item = ITEMS[itemId];
-  if (!item || (state.items?.[itemId] || 0) <= 0) return;
+  const owned = state.items?.[itemId] || 0;
+  if (!item || owned <= 0) return;
   itemsUiSelectedId = itemId;
   const list = $('items-target-list');
   list.innerHTML = '';
@@ -2955,7 +2956,18 @@ function openItemsTargetPicker(itemId) {
   }
   $('items-step-list').classList.add('hidden');
   $('items-step-target').classList.remove('hidden');
-  $('items-title').textContent = '选择宝可梦';
+  $('items-title').textContent = item.effect === 'xp'
+    ? `选择宝可梦 · ${item.name} ×${owned}`
+    : '选择宝可梦';
+}
+
+function backToItemsList() {
+  itemsUiSelectedId = null;
+  $('items-step-list')?.classList.remove('hidden');
+  $('items-step-target')?.classList.add('hidden');
+  const title = $('items-title');
+  if (title) title.textContent = '道具';
+  renderItemsModalList();
 }
 
 function onItemsUseOutOfBattle(uid) {
@@ -2978,6 +2990,13 @@ function onItemsUseOutOfBattle(uid) {
   showAppToast(lines.join(' '));
   save();
   renderParty($('party-list'), false);
+  // Exp candies stay on the target picker so the same mon can be fed repeatedly.
+  if (item.effect === 'xp') {
+    const left = state.items[item.id] || 0;
+    if (left > 0) openItemsTargetPicker(item.id);
+    else backToItemsList();
+    return;
+  }
   closeItemsModal();
 }
 

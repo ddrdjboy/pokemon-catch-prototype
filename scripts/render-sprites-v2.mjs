@@ -727,6 +727,78 @@ const painters = {
     g.eye(96, 38, 2.4);
     if (mega) g.oval(68, 70, 50, 42, [255, 214, 70], { alpha: 46, shade: 0 });
   },
+
+  /** 改·达克莱伊 — dark humanoid, white plume, red eyes, nether aura */
+  remake_darkrai(g) {
+    const black = [24, 20, 44];
+    const body = [48, 40, 88];
+    const white = [236, 236, 248];
+    const red = [220, 48, 64];
+    g.oval(64, 64, 42, 46, [110, 50, 170], { alpha: 38, shade: 0 });
+    g.oval(48, 94, 8, 14, black);
+    g.oval(64, 98, 11, 16, black);
+    g.oval(80, 94, 8, 14, black);
+    g.oval(42, 74, 7, 16, body);
+    g.oval(86, 74, 7, 16, body);
+    g.oval(64, 72, 16, 24, body);
+    g.oval(44, 56, 7, 13, white);
+    g.oval(84, 56, 7, 13, white);
+    g.oval(54, 50, 6, 11, white);
+    g.oval(74, 50, 6, 11, white);
+    g.oval(64, 42, 14, 16, body);
+    g.oval(64, 20, 11, 18, white);
+    g.oval(56, 12, 5, 11, white);
+    g.oval(72, 12, 5, 11, white);
+    g.oval(56, 42, 3.6, 4.2, red, { shade: 0 });
+    g.oval(72, 42, 3.6, 4.2, red, { shade: 0 });
+    g.oval(55, 41, 1.3, 1.3, [255, 200, 200], { alpha: 230, shade: 0 });
+    g.oval(71, 41, 1.3, 1.3, [255, 200, 200], { alpha: 230, shade: 0 });
+  },
+
+  /** 改·克雷色利亚 — pastel crescent flyer, gold face gem */
+  remake_cresselia(g) {
+    const cream = [255, 236, 204];
+    const pink = [255, 168, 196];
+    const wing = [255, 208, 168];
+    const gold = [255, 208, 72];
+    g.oval(64, 64, 44, 44, [170, 120, 255], { alpha: 34, shade: 0 });
+    g.oval(34, 52, 13, 22, wing);
+    g.oval(26, 66, 11, 16, pink);
+    g.oval(94, 52, 13, 22, wing);
+    g.oval(102, 66, 11, 16, pink);
+    // crescent body (arc of ovals)
+    g.oval(52, 78, 12, 14, cream);
+    g.oval(58, 62, 13, 16, cream);
+    g.oval(66, 50, 12, 14, cream);
+    g.oval(76, 58, 11, 15, cream);
+    g.oval(80, 74, 10, 14, cream);
+    g.oval(64, 70, 14, 16, cream);
+    g.oval(64, 48, 12, 12, cream);
+    g.oval(64, 44, 5, 5, gold, { shade: 0 });
+    g.eye(54, 50, 2.8);
+    g.eye(72, 50, 2.8);
+  },
+
+  /** 改·露奈雅拉 — bat-moon wings, pale moon face, gold eyes */
+  remake_lunala(g) {
+    const navy = [36, 32, 88];
+    const blue = [72, 88, 176];
+    const pale = [220, 230, 255];
+    const gold = [255, 210, 80];
+    g.oval(64, 64, 48, 44, [90, 50, 150], { alpha: 40, shade: 0 });
+    g.oval(34, 58, 24, 38, navy);
+    g.oval(94, 58, 24, 38, navy);
+    g.oval(28, 48, 12, 20, blue);
+    g.oval(100, 48, 12, 20, blue);
+    g.oval(40, 88, 10, 14, navy);
+    g.oval(88, 88, 10, 14, navy);
+    g.oval(64, 72, 15, 22, navy);
+    g.oval(64, 48, 13, 14, navy);
+    g.oval(64, 46, 8, 8, pale, { shade: 0 });
+    g.oval(64, 46, 3.5, 3.5, gold, { shade: 0 });
+    g.oval(50, 50, 3.6, 4.2, gold, { shade: 0 });
+    g.oval(78, 50, 3.6, 4.2, gold, { shade: 0 });
+  },
 };
 
 /** Map species id → [painterKey, stage 0-3] */
@@ -832,6 +904,9 @@ const SPECIES_MAP = {
   luxray: ['lynx_electric', 2],
   mega_luxray: ['lynx_electric', 3],
   mega_rayquaza: ['rayquaza', 3],
+  remake_darkrai: ['remake_darkrai', 2],
+  remake_cresselia: ['remake_cresselia', 2],
+  remake_lunala: ['remake_lunala', 2],
 };
 
 export { create, tint, mix };

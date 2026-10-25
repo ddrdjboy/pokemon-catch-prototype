@@ -2172,7 +2172,7 @@ function renderFormationField() {
     chip.innerHTML = `
       <div class="chip-art"><img src="${pokemonUrl(sp.sprite, 'full')}" alt="" /></div>
       <div class="chip-meta">
-        <span class="chip-name">${sp.name}</span>
+        <span class="chip-name">Lv.${mon.level} ${sp.name}</span>
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
       </div>
     `;
@@ -2234,7 +2234,7 @@ function renderFormationParty() {
     chip.innerHTML = `
       <div class="chip-art"><img src="${pokemonUrl(sp.sprite, 'full')}" alt="" /></div>
       <div class="chip-meta">
-        <span class="chip-name">${sp.name}</span>
+        <span class="chip-name">Lv.${mon.level} ${sp.name}</span>
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
       </div>
     `;

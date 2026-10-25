@@ -2149,6 +2149,7 @@ function renderFormationField() {
   battle.foes.forEach((mon, index) => {
     const chip = document.createElement('button');
     chip.type = 'button';
+    chip.dataset.foeIndex = String(index);
     // Keep the slot so surviving foes do not shift into the empty space.
     if (mon.hp <= 0) {
       chip.className = 'formation-chip down';
@@ -2205,11 +2206,11 @@ function renderFormationParty() {
   wrap.classList.remove('hidden');
   const allies = battle.allies || [];
   const slots = [
-    { mon: allies[0], role: 'ally' },
-    { mon: allies[1], role: 'ally' },
+    { mon: allies[0], role: 'ally', allyIndex: 0 },
+    { mon: allies[1], role: 'ally', allyIndex: 1 },
     { mon: battle.player, role: 'player' },
-    { mon: allies[2], role: 'ally' },
-    { mon: allies[3], role: 'ally' },
+    { mon: allies[2], role: 'ally', allyIndex: 2 },
+    { mon: allies[3], role: 'ally', allyIndex: 3 },
   ];
   row.innerHTML = '';
   for (const slot of slots) {
@@ -2229,6 +2230,7 @@ function renderFormationParty() {
       isPlayer ? 'player-chip' : 'ally-chip',
       mon.hp <= 0 ? 'fainted' : '',
     ].filter(Boolean).join(' ');
+    if (!isPlayer) chip.dataset.allyIndex = String(slot.allyIndex);
     chip.innerHTML = `
       <div class="chip-art"><img src="${pokemonUrl(sp.sprite, 'full')}" alt="" /></div>
       <div class="chip-meta">
@@ -2979,9 +2981,125 @@ function openItemsUi() {
   $('items-modal').classList.remove('hidden');
 }
 
+function formationFoeChip(index) {
+  return document.querySelector(`.formation-chip[data-foe-index="${index}"]`);
+}
+
+function formationAllyChip(index) {
+  return document.querySelector(`#player-row .ally-chip[data-ally-index="${index}"]`);
+}
+
+function formationPlayerChip() {
+  return document.querySelector('#player-row .player-chip');
+}
+
+function formationHitElements(line) {
+  if (line.side === 'player') {
+    return {
+      attackerEl: formationPlayerChip(),
+      defenderEl: formationFoeChip(line.targetIndex),
+      attackerSpeciesId: battle?.player?.speciesId,
+    };
+  }
+  if (line.side === 'ally') {
+    return {
+      attackerEl: formationAllyChip(line.allyIndex),
+      defenderEl: formationFoeChip(line.targetIndex),
+      attackerSpeciesId: battle?.allies?.[line.allyIndex]?.speciesId,
+    };
+  }
+  // foe
+  const defenderEl = line.target === 'ally'
+    ? formationAllyChip(line.allyIndex)
+    : formationPlayerChip();
+  return {
+    attackerEl: formationFoeChip(line.actorIndex),
+    defenderEl,
+    attackerSpeciesId: battle?.foes?.[line.actorIndex]?.speciesId,
+  };
+}
+
+/** Update chip HP bar in place; KO foes become empty placeholders without reflow. */
+function paintFormationChipHp(chip, mon) {
+  if (!chip || !mon) return;
+  if (chip.dataset.foeIndex != null && mon.hp <= 0) {
+    chip.className = 'formation-chip down';
+    chip.disabled = true;
+    chip.setAttribute('aria-hidden', 'true');
+    chip.innerHTML = '<div class="chip-art"></div><div class="chip-meta"></div>';
+    return;
+  }
+  const pct = formationChipHp(mon);
+  const fill = chip.querySelector('.hp-fill');
+  if (fill) {
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle('low', pct <= 25);
+  }
+  if (mon.hp <= 0) chip.classList.add('fainted');
+}
+
+function applyFormationLogHp(line) {
+  if (line.effect) {
+    if (line.side === 'player' && battle.player) {
+      // Effect already applied in resolve; sync from turn at end. Soft-paint current.
+      paintFormationChipHp(formationPlayerChip(), battle.player);
+    }
+    return;
+  }
+  if (line.side === 'foe') {
+    if (line.target === 'ally' && battle.allies?.[line.allyIndex]) {
+      const ally = battle.allies[line.allyIndex];
+      ally.hp = Math.max(0, ally.hp - (line.damage || 0));
+      paintFormationChipHp(formationAllyChip(line.allyIndex), ally);
+    } else if (battle.player) {
+      battle.player.hp = Math.max(0, battle.player.hp - (line.damage || 0));
+      paintFormationChipHp(formationPlayerChip(), battle.player);
+    }
+    return;
+  }
+  const foe = battle.foes?.[line.targetIndex];
+  if (!foe) return;
+  foe.hp = Math.max(0, foe.hp - (line.damage || 0));
+  paintFormationChipHp(formationFoeChip(line.targetIndex), foe);
+  if (line.targetIndex === battle.selectedTarget && foe.hp <= 0) ensureFormationTarget();
+}
+
 async function playFormationTurnHits(turn) {
   for (let i = 0; i < turn.logs.length; i += 1) {
-    appendLog(turn.logs[i].text);
+    const line = turn.logs[i];
+    appendLog(line.text);
+    const { attackerEl, defenderEl, attackerSpeciesId } = formationHitElements(line);
+    playAttackSfx(line.moveType || 'normal');
+    if (line.effect) {
+      if (line.side === 'player' && turn.player) {
+        battle.player = { ...battle.player, ...turn.player };
+        paintFormationChipHp(formationPlayerChip(), battle.player);
+        if (line.effect === 'heal') {
+          showHealNumber(attackerEl, Math.floor((battle.player.maxHp || 0) * 0.5));
+        }
+      }
+      syncBattleHp();
+      await wait(HP_ANIM_MS);
+      if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
+      continue;
+    }
+    await playHit({
+      side: line.side,
+      attackerSpeciesId,
+      moveType: line.moveType || 'normal',
+      attackerEl,
+      defenderEl,
+      mode: state.battleAnim,
+    });
+    applyFormationLogHp(line);
+    syncBattleHp();
+    playDamageNumber(defenderEl, {
+      amount: line.damage,
+      typeMult: line.typeMult,
+      crit: !!line.crit,
+      enabled: state.damageNumbers !== false,
+    });
+    await wait(HP_ANIM_MS);
     if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
   }
   battle.player = turn.player;

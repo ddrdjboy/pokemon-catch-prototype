@@ -1205,6 +1205,7 @@ button.danger {
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow: visible;
 }
 
 .formation-chip .chip-art {
@@ -1449,15 +1450,18 @@ button.danger {
   transform: scaleX(-1);
 }
 
-.sprite-wrap.fx-lunge-right img {
+.sprite-wrap.fx-lunge-right img,
+.formation-chip.fx-lunge-right img {
   animation: fx-lunge-right 160ms ease-out;
 }
 
-.sprite-wrap.fx-lunge-left img {
+.sprite-wrap.fx-lunge-left img,
+.formation-chip.fx-lunge-left img {
   animation: fx-lunge-left 160ms ease-out;
 }
 
-.sprite-wrap.fx-hit img {
+.sprite-wrap.fx-hit img,
+.formation-chip.fx-hit img {
   animation: fx-hit 220ms steps(2, end);
 }
 
@@ -1617,6 +1621,9 @@ button.danger {
   .sprite-wrap.fx-lunge-right img,
   .sprite-wrap.fx-lunge-left img,
   .sprite-wrap.fx-hit img,
+  .formation-chip.fx-lunge-right img,
+  .formation-chip.fx-lunge-left img,
+  .formation-chip.fx-hit img,
   .fx-burst.play,
   .ally-chip.fx-chip-flash {
     animation-duration: 1ms !important;

@@ -493,6 +493,22 @@ const formTurn = resolveFormationTurn(formPlayer, formAllies, formation.foes.map
 assert(formTurn.logs.length >= 5, 'player+allies+foes act in speed order');
 assert(formTurn.player && formTurn.allies.length === 4 && formTurn.foes.length === 10, 'formation turn shape');
 assert(['ongoing', 'win', 'lose'].includes(formTurn.result), 'formation result');
+{
+  const tank = { ...createPokemon('mega_charizard', 200), hp: 99999, maxHp: 99999 };
+  const tankAllies = formAllies.map((a) => ({ ...a, hp: a.maxHp, maxHp: a.maxHp }));
+  const fxTurn = resolveFormationTurn(tank, tankAllies, formation.foes.map((f) => ({ ...f })), {
+    rng: () => 0,
+    playerTargetIndex: formation.foes.findIndex((f) => f.row === 'front'),
+    playerMove: { name: '重击', power: 80, type: 'fire' },
+  });
+  const playerHit = fxTurn.logs.find((l) => l.side === 'player' && !l.effect);
+  const allyHit = fxTurn.logs.find((l) => l.side === 'ally' && !l.effect);
+  const foeHit = fxTurn.logs.find((l) => l.side === 'foe' && !l.effect);
+  assert(playerHit && Number.isInteger(playerHit.targetIndex) && playerHit.targetIndex >= 0, 'player hit has targetIndex');
+  assert(allyHit && Number.isInteger(allyHit.targetIndex) && Number.isInteger(allyHit.allyIndex), 'ally hit has allyIndex+targetIndex');
+  assert(foeHit && Number.isInteger(foeHit.actorIndex) && (foeHit.target === 'player' || foeHit.target === 'ally'), 'foe hit has actorIndex+target');
+  if (foeHit?.target === 'ally') assert(Number.isInteger(foeHit.allyIndex), 'foe→ally has allyIndex');
+}
 
 {
   const softFoes = formation.foes.map((f, i) => (

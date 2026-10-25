@@ -175,6 +175,8 @@ let mazeWalkTimer = null;
 let mazeStickDir = null;
 let mazeStickTimer = null;
 let mazeStickPointer = null;
+/** Blocks skip/advance while a formation catch claim is settling. */
+let catchQueueLock = false;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -3146,8 +3148,15 @@ function renderCatchStyle() {
   }
 }
 
+function setCatchSkipEnabled(enabled) {
+  const btn = $('btn-skip-catch');
+  if (btn) btn.disabled = !enabled;
+}
+
 function enterCatch(enc) {
   throwsThisEncounter = 0;
+  catchQueueLock = false;
+  setCatchSkipEnabled(true);
   const foe = { ...enc.activeFoe };
   // Fainted for catch — hpFactor uses current hp; keep low hp for better catch
   foe.hp = Math.max(1, Math.floor(foe.maxHp * 0.05));
@@ -3246,6 +3255,12 @@ function settleThrow(hit) {
     return;
   }
 
+  // Lock skip before shake animation so it cannot race claimPokemon.
+  if (success && pendingEncounter?.formationCatchQueue?.length) {
+    catchQueueLock = true;
+    setCatchSkipEnabled(false);
+  }
+
   catchCtrl?.playOutcome({
     shakes,
     caught: success,
@@ -3279,7 +3294,14 @@ function claimPokemon(foe) {
     result.textContent = `${result.textContent} ${evoMsgs.join(' ')}`;
   }
   const inFormationQueue = !!pendingEncounter?.formationCatchQueue?.length;
-  if (!inFormationQueue) markCleared();
+  if (inFormationQueue) {
+    // Shift now so a late skip cannot double-advance during the celebration.
+    pendingEncounter.formationCatchQueue.shift();
+    catchQueueLock = true;
+    setCatchSkipEnabled(false);
+  } else {
+    markCleared();
+  }
   save();
   setTimeout(() => {
     if (catchCtrl) {
@@ -3287,7 +3309,8 @@ function claimPokemon(foe) {
       catchCtrl = null;
     }
     if (inFormationQueue) {
-      pendingEncounter.formationCatchQueue.shift();
+      catchQueueLock = false;
+      setCatchSkipEnabled(true);
       advanceFormationCatch();
       return;
     }
@@ -3296,6 +3319,7 @@ function claimPokemon(foe) {
 }
 
 function skipCatch() {
+  if (catchQueueLock || catchCtrl?.isBusy()) return;
   if (pendingEncounter?.formationCatchQueue?.length) {
     if (catchCtrl) {
       catchCtrl.destroy();

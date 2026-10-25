@@ -1483,6 +1483,13 @@ button.danger {
   transform: scaleX(-1);
 }
 
+.formation-chip.fx-dashing,
+.sprite-wrap.fx-dashing,
+.ally-chip.fx-dashing {
+  will-change: transform;
+  pointer-events: none;
+}
+
 .sprite-wrap.fx-lunge-right img,
 .formation-chip.fx-lunge-right img {
   animation: fx-lunge-right 160ms ease-out;

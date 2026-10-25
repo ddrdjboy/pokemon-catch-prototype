@@ -1146,8 +1146,20 @@ button.danger {
 .player-formation {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.55rem;
   width: 100%;
+}
+
+/* Front is closer to the camera: paint above back-row art overflow so living
+   front foes stay visible/clickable and empty KO slots do not look “gone.” */
+.foe-formation .formation-row.back {
+  position: relative;
+  z-index: 1;
+}
+
+.foe-formation .formation-row.front {
+  position: relative;
+  z-index: 3;
 }
 
 .formation-side-label {

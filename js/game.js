@@ -363,13 +363,10 @@ function formationPlayerMove() {
   return SPECIES[battle.player.speciesId]?.move || null;
 }
 
-function formationPierce() {
-  return !!formationPlayerMove()?.pierce;
-}
-
 function ensureFormationTarget() {
   if (!battle?.formation || !battle.foes) return;
-  const legal = legalFormationTargets(battle.foes, { pierce: formationPierce() });
+  // Player can aim any living foe, including back row.
+  const legal = legalFormationTargets(battle.foes, { pierce: true });
   if (!legal.length) {
     battle.selectedTarget = -1;
     return;
@@ -2146,22 +2143,16 @@ function renderFormationField() {
   if (!back || !front) return;
   back.innerHTML = '';
   front.innerHTML = '';
-  const legal = legalFormationTargets(battle.foes, { pierce: formationPierce() });
-  const legalSet = new Set(legal);
 
   battle.foes.forEach((mon, index) => {
     const sp = SPECIES[mon.speciesId];
     const chip = document.createElement('button');
     chip.type = 'button';
     const down = mon.hp <= 0;
-    const locked = !down && !legalSet.has(mon);
-    const selected = index === battle.selectedTarget && !down;
     chip.className = [
       'formation-chip',
       mon.boss ? 'boss' : '',
       down ? 'down' : '',
-      locked ? 'locked' : '',
-      selected ? 'selected' : '',
     ].filter(Boolean).join(' ');
     const pct = formationChipHp(mon);
     chip.innerHTML = `
@@ -2171,7 +2162,7 @@ function renderFormationField() {
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
       </div>
     `;
-    if (!down && !locked) {
+    if (!down) {
       chip.addEventListener('click', () => {
         battle.selectedTarget = index;
         battle.foe = battle.foes[index];
@@ -2185,10 +2176,8 @@ function renderFormationField() {
   battle.foe = battle.foes[battle.selectedTarget] || battle.foes.find((f) => f.hp > 0) || battle.foes[0];
   const next = $('formation-next');
   if (next) {
-    const sel = battle.foes[battle.selectedTarget];
-    next.textContent = sel && sel.hp > 0
-      ? `锁定：${SPECIES[sel.speciesId].name}${sel.boss ? '（头目）' : ''} · ${sel.row === 'front' ? '前排' : '后排'}`
-      : '选择可攻击的目标';
+    next.textContent = '';
+    next.classList.add('hidden');
   }
   renderFormationParty();
 }
@@ -2229,7 +2218,7 @@ function renderFormationParty() {
       <span class="chip-tag">${slot.label}</span>
       <img src="${pokemonUrl(sp.sprite, 'full')}" alt="" />
       <div class="chip-meta">
-        <span class="chip-name">${sp.name}</span>
+        <span class="chip-name">${isPlayer ? `玩家 · ${sp.name}` : sp.name}</span>
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
       </div>
     `;

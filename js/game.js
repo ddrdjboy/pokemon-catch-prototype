@@ -358,9 +358,6 @@ function isBattleScreenActive() {
   return !!battle && !screens.battle.classList.contains('hidden');
 }
 
-function updateItemButton() {
-  const btn = $('btn-items');
-  if (!btn) return;
 function formationPlayerMove() {
   if (!battle?.player) return null;
   return SPECIES[battle.player.speciesId]?.move || null;
@@ -382,6 +379,9 @@ function ensureFormationTarget() {
   battle.selectedTarget = battle.foes.indexOf(legal[0]);
 }
 
+function updateItemButton() {
+  const btn = $('btn-items');
+  if (!btn) return;
   btn.disabled = false;
 }
 
@@ -2161,7 +2161,7 @@ function renderFormationField() {
     ].filter(Boolean).join(' ');
     const pct = Math.max(0, Math.round((mon.hp / mon.maxHp) * 100));
     chip.innerHTML = `
-      <img src="${spriteUrl(sp.sprite)}" alt="" />
+      <img src="${pokemonUrl(sp.sprite, 'thumb')}" alt="" />
       <div>${sp.name}</div>
       <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
     `;

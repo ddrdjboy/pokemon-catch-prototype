@@ -766,7 +766,7 @@ export const NETHER_BACK_MINION_LEVEL = 180;
 export const NETHER_SEAL = {
   id: 'netherSeal',
   name: '冥界符',
-  price: 5000,
+  price: 1,
 };
 
 export const GHOST_NETHER_MINIONS = {

@@ -2149,10 +2149,12 @@ function renderFormationField() {
     const chip = document.createElement('button');
     chip.type = 'button';
     const down = mon.hp <= 0;
+    const selected = index === battle.selectedTarget && !down;
     chip.className = [
       'formation-chip',
       mon.boss ? 'boss' : '',
       down ? 'down' : '',
+      selected ? 'selected' : '',
     ].filter(Boolean).join(' ');
     const pct = formationChipHp(mon);
     chip.innerHTML = `

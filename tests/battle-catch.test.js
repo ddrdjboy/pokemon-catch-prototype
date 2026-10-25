@@ -459,7 +459,7 @@ assert(SPIRIT_HALL_BOSS_LEVELS[1] === 225 && SPIRIT_HALL_BOSS_LEVELS[2] === 250 
 
 console.log('ghost nether');
 assert(MAPS.ghost_nether?.nether && MAPS.ghost_nether.encounters.length === 1, 'ghost nether single fight');
-assert(NETHER_SEAL.price === 5000 && NETHER_SEAL_COST === 1 && NETHER_UNLOCK_COUNT === 2, 'nether seal shop and gate');
+assert(NETHER_SEAL.price === 1 && NETHER_SEAL_COST === 1 && NETHER_UNLOCK_COUNT === 2, 'nether seal shop and gate');
 assert(NETHER_UNLOCK_LEVEL === 100 && NETHER_BOSS_LEVEL === 200, 'nether unlock and boss level');
 for (const id of ['remake_darkrai', 'remake_cresselia', 'remake_lunala']) {
   assert(SPECIES[id]?.name?.startsWith('改·') && SPECIES[id].sprite, `${id} remake species`);

@@ -2156,7 +2156,7 @@ function renderFormationField() {
     ].filter(Boolean).join(' ');
     const pct = formationChipHp(mon);
     chip.innerHTML = `
-      <img src="${pokemonUrl(sp.sprite, 'full')}" alt="" />
+      <div class="chip-art"><img src="${pokemonUrl(sp.sprite, 'full')}" alt="" /></div>
       <div class="chip-meta">
         <span class="chip-name">${sp.name}</span>
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
@@ -2190,11 +2190,11 @@ function renderFormationParty() {
   wrap.classList.remove('hidden');
   const allies = battle.allies || [];
   const slots = [
-    { mon: allies[0], role: 'ally', label: '助战' },
-    { mon: allies[1], role: 'ally', label: '助战' },
-    { mon: battle.player, role: 'player', label: '玩家' },
-    { mon: allies[2], role: 'ally', label: '助战' },
-    { mon: allies[3], role: 'ally', label: '助战' },
+    { mon: allies[0], role: 'ally' },
+    { mon: allies[1], role: 'ally' },
+    { mon: battle.player, role: 'player' },
+    { mon: allies[2], role: 'ally' },
+    { mon: allies[3], role: 'ally' },
   ];
   row.innerHTML = '';
   for (const slot of slots) {
@@ -2202,7 +2202,7 @@ function renderFormationParty() {
     const chip = document.createElement('div');
     if (!mon) {
       chip.className = 'formation-chip down';
-      chip.innerHTML = `<span class="chip-name">—</span>`;
+      chip.innerHTML = `<div class="chip-meta"><span class="chip-name">—</span></div>`;
       row.appendChild(chip);
       continue;
     }
@@ -2215,10 +2215,9 @@ function renderFormationParty() {
       mon.hp <= 0 ? 'fainted' : '',
     ].filter(Boolean).join(' ');
     chip.innerHTML = `
-      <span class="chip-tag">${slot.label}</span>
-      <img src="${pokemonUrl(sp.sprite, 'full')}" alt="" />
+      <div class="chip-art"><img src="${pokemonUrl(sp.sprite, 'full')}" alt="" /></div>
       <div class="chip-meta">
-        <span class="chip-name">${isPlayer ? `玩家 · ${sp.name}` : sp.name}</span>
+        <span class="chip-name">${sp.name}</span>
         <div class="hp-bar"><div class="hp-fill${pct <= 25 ? ' low' : ''}" style="width:${pct}%"></div></div>
       </div>
     `;

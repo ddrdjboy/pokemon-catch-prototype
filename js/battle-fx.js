@@ -211,6 +211,81 @@ async function playLight(attackerEl, defenderEl, side) {
   ]);
 }
 
+const DASH_IN_MS = 200;
+const DASH_HOLD_MS = 90;
+const DASH_OUT_MS = 180;
+
+/**
+ * Rush attacker to just in front of defender, strike, then return home.
+ * Falls back to in-place lunge when geometry is unavailable.
+ */
+async function playDashStrike(attackerEl, defenderEl, side, {
+  moveType,
+  mode = 'light',
+  attackerSpeciesId,
+  reducedMotion = false,
+} = {}) {
+  if (!attackerEl || !defenderEl || reducedMotion) {
+    await playLight(attackerEl, defenderEl, side);
+    if (mode !== 'light') await playBurst(defenderEl, moveType);
+    return { played: mode === 'light' ? 'light' : 'medium' };
+  }
+
+  const a = attackerEl.getBoundingClientRect();
+  const d = defenderEl.getBoundingClientRect();
+  if (!(a.width > 0 && d.width > 0)) {
+    await playLight(attackerEl, defenderEl, side);
+    if (mode !== 'light') await playBurst(defenderEl, moveType);
+    return { played: 'light' };
+  }
+
+  const aCx = a.left + a.width / 2;
+  const aCy = a.top + a.height / 2;
+  const dCx = d.left + d.width / 2;
+  const dCy = d.top + d.height / 2;
+  const fullDx = dCx - aCx;
+  const fullDy = dCy - aCy;
+  const dist = Math.hypot(fullDx, fullDy) || 1;
+  // Stop short of the target center so the attacker stands "in front".
+  const stopShort = Math.min(44, Math.max(22, dist * 0.28));
+  const dx = fullDx - (fullDx / dist) * stopShort;
+  const dy = fullDy - (fullDy / dist) * stopShort;
+
+  const prevTransition = attackerEl.style.transition;
+  const prevTransform = attackerEl.style.transform;
+  const prevZ = attackerEl.style.zIndex;
+  attackerEl.classList.add('fx-dashing');
+  attackerEl.style.zIndex = '24';
+  void attackerEl.offsetWidth;
+  attackerEl.style.transition = `transform ${DASH_IN_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
+  attackerEl.style.transform = `translate(${dx}px, ${dy}px)`;
+  await wait(DASH_IN_MS);
+
+  if (mode === 'heavy' && attackerSpeciesId) {
+    await playFighterAttack(attackerEl, attackerSpeciesId, { side });
+  } else if (side === 'ally' && attackerEl.classList?.contains('ally-chip')) {
+    await bumpClass(attackerEl, 'fx-chip-flash', 120);
+  }
+
+  await Promise.all([
+    bumpClass(defenderEl, 'fx-hit', 220),
+    mode === 'light' ? wait(DASH_HOLD_MS) : playBurst(defenderEl, moveType, 280),
+  ]);
+
+  attackerEl.style.transition = `transform ${DASH_OUT_MS}ms ease-in`;
+  attackerEl.style.transform = prevTransform || 'none';
+  await wait(DASH_OUT_MS);
+
+  attackerEl.classList.remove('fx-dashing');
+  attackerEl.style.transition = prevTransition;
+  attackerEl.style.transform = prevTransform;
+  attackerEl.style.zIndex = prevZ;
+
+  if (mode === 'heavy' && attackerSpeciesId) return { played: 'heavy-dash' };
+  if (side === 'ally') return { played: mode === 'light' ? 'light-ally-dash' : 'medium-ally-dash' };
+  return { played: mode === 'light' ? 'light-dash' : (mode === 'heavy' ? 'medium-fallback' : 'medium-dash') };
+}
+
 export async function playHit({
   side,
   attackerSpeciesId,
@@ -222,6 +297,16 @@ export async function playHit({
 } = {}) {
   const m = effectiveBattleAnim(mode, { reducedMotion });
   if (m === 'off') return { played: 'off' };
+
+  // Dash to the target whenever both anchors exist (formation chips, sprites, allies).
+  if (attackerEl && defenderEl) {
+    return playDashStrike(attackerEl, defenderEl, side, {
+      moveType,
+      mode: m,
+      attackerSpeciesId,
+      reducedMotion,
+    });
+  }
 
   if (side === 'ally' && attackerEl?.classList?.contains('ally-chip')) {
     await bumpClass(attackerEl, 'fx-chip-flash', 140);

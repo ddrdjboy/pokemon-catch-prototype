@@ -1,6 +1,7 @@
 import {
   calcDamage, CRIT_MULT, CRIT_RATE, nextBattleStep, resolveDualTurn, resolveDualItemTurn, resolveSquadTurn,
   resolveFoeOnlyTurn, resolveSquadItemTurn, whoGoesFirstDeterministic,
+  legalFormationTargets, resolveFormationTurn,
 } from '../js/battle.js';
 import {
   normalizeBattleAnim,
@@ -27,6 +28,9 @@ import {
   RIFT_UNLOCK_LEVEL, RIFT_FRUIT_COST, RIFT_FRUIT, RIFT_BOSS_LEVEL,
   TWIN_UNLOCK_LEVEL, TWIN_UNLOCK_COUNT, TWIN_KEY_COST, TWIN_KEY, TWIN_BOSS_LEVEL,
   canEnterSpiritHall, SPIRIT_HALL_BOSS_LEVELS,
+  createGhostNetherAllies,
+  trySpendNetherSeal,
+  NETHER_UNLOCK_LEVEL, NETHER_UNLOCK_COUNT, NETHER_SEAL_COST, NETHER_SEAL, NETHER_BOSS_LEVEL,
 } from '../js/data.js';
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { partyIndividualView } from '../js/party-detail.js';
@@ -349,7 +353,7 @@ for (const id of regionIds) {
     known.add(sid);
   }
 }
-assert(Object.keys(MAPS).length === 22, '22 maps total');
+assert(Object.keys(MAPS).length === 23, '23 maps total');
 
 console.log('rift raid');
 assert(SPECIES.mega_rayquaza?.name === '超级裂空座' && SPECIES.mega_rayquaza.mega, 'mega rayquaza');
@@ -452,6 +456,43 @@ assert(canEnterSpiritHall({ twinCleared: true }).ok === true, 'open after twin c
 const init = initialPlayerState();
 assert(init.twinCleared === false, 'fresh save not cleared');
 assert(SPIRIT_HALL_BOSS_LEVELS[1] === 225 && SPIRIT_HALL_BOSS_LEVELS[2] === 250 && SPIRIT_HALL_BOSS_LEVELS[3] === 300, 'boss levels table');
+
+console.log('ghost nether');
+assert(MAPS.ghost_nether?.nether && MAPS.ghost_nether.encounters.length === 1, 'ghost nether single fight');
+assert(NETHER_SEAL.price === 5000 && NETHER_SEAL_COST === 1 && NETHER_UNLOCK_COUNT === 2, 'nether seal shop and gate');
+assert(NETHER_UNLOCK_LEVEL === 100 && NETHER_BOSS_LEVEL === 200, 'nether unlock and boss level');
+for (const id of ['remake_darkrai', 'remake_cresselia', 'remake_lunala']) {
+  assert(SPECIES[id]?.name?.startsWith('改·') && SPECIES[id].sprite, `${id} remake species`);
+}
+const netherGate = { netherSeals: 1 };
+assert(trySpendNetherSeal(netherGate, [{ level: 101 }]).reason === 'level', 'one over-100 cannot enter nether');
+assert(trySpendNetherSeal({ netherSeals: 0 }, [{ level: 101 }, { level: 102 }]).reason === 'seal', 'needs nether seal');
+assert(trySpendNetherSeal(netherGate, [{ level: 101 }, { level: 102 }]).ok && netherGate.netherSeals === 0, 'seal opens ghost nether');
+const formation = rollEncounter(MAPS.ghost_nether.encounters[0], { hasCharm: false, bossChance: 0 });
+assert(formation.formation && formation.foes.length === 10, 'formation rolls 10 foes');
+assert(formation.foes.filter((f) => f.row === 'front').length === 5, '5 front');
+assert(formation.foes.filter((f) => f.row === 'back').length === 5, '5 back');
+assert(formation.foes.filter((f) => f.boss).length === 3, '3 bosses');
+const allies4 = createGhostNetherAllies(() => 0.1);
+assert(allies4.length === 4 && new Set(allies4.map((a) => a.speciesId)).size === 4, '4 distinct allies');
+
+const formFoes = formation.foes.map((f) => ({ ...f }));
+const legalFront = legalFormationTargets(formFoes, { pierce: false });
+assert(legalFront.length === 5 && legalFront.every((f) => f.row === 'front'), 'default lock front only');
+const legalPierce = legalFormationTargets(formFoes, { pierce: true });
+assert(legalPierce.length === 10, 'pierce can lock all');
+formFoes.filter((f) => f.row === 'front').forEach((f) => { f.hp = 0; });
+assert(legalFormationTargets(formFoes, { pierce: false }).every((f) => f.row === 'back'), 'back opens after front clear');
+
+const formPlayer = createPokemon('mega_charizard', 140);
+const formAllies = createGhostNetherAllies(() => 0.2);
+const formTurn = resolveFormationTurn(formPlayer, formAllies, formation.foes.map((f) => ({ ...f })), {
+  rng: () => 0,
+  playerTargetIndex: formation.foes.findIndex((f) => f.row === 'front'),
+});
+assert(formTurn.logs.length >= 5, 'player+allies+foes act in speed order');
+assert(formTurn.player && formTurn.allies.length === 4 && formTurn.foes.length === 10, 'formation turn shape');
+assert(['ongoing', 'win', 'lose'].includes(formTurn.result), 'formation result');
 
 console.log('pokedex list');
 const dex = listDexEntries(SPECIES);

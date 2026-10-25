@@ -409,3 +409,92 @@ export function whoGoesFirstDeterministic(a, b) {
 }
 
 export { speciesMoveList };
+
+/** Living foes the attacker may lock. pierce ignores front-row gate. */
+export function legalFormationTargets(foes, { pierce = false } = {}) {
+  const living = foes.filter((f) => f.hp > 0);
+  const frontUp = living.some((f) => f.row === 'front');
+  if (!pierce && frontUp) return living.filter((f) => f.row === 'front');
+  return living;
+}
+
+function pickLowestHp(targets) {
+  return targets.slice().sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+}
+
+/**
+ * Full-field speed queue for ghost_nether only.
+ * Lose when player.hp <= 0 (allies wiping does not lose). Win when all foes down.
+ */
+export function resolveFormationTurn(player, allies, foes, {
+  rng = Math.random,
+  playerTargetIndex = -1,
+  playerMove = null,
+} = {}) {
+  const p = withBattleState({ ...player });
+  const team = allies.map((a) => withBattleState({ ...a }));
+  const enemy = foes.map((f) => withBattleState({ ...f }));
+  const logs = [];
+
+  const livingAllies = () => [
+    ...(p.hp > 0 ? [{ side: 'player', index: -1, mon: p }] : []),
+    ...team.map((mon, index) => ({ side: 'ally', index, mon })).filter((u) => u.mon.hp > 0),
+  ];
+  const livingFoes = () => enemy
+    .map((mon, index) => ({ side: 'foe', index, mon }))
+    .filter((u) => u.mon.hp > 0);
+
+  const actors = [...livingAllies(), ...livingFoes()].sort((a, b) => {
+    if (b.mon.spd !== a.mon.spd) return b.mon.spd - a.mon.spd;
+    if (a.side !== b.side) {
+      const rank = { player: 0, ally: 1, foe: 2 };
+      return rank[a.side] - rank[b.side];
+    }
+    return a.index - b.index;
+  });
+
+  for (const actor of actors) {
+    if (actor.mon.hp <= 0) continue;
+    if (actor.side === 'foe') {
+      const squad = livingAllies().map((u) => u.mon);
+      if (!squad.length) break;
+      const kit = speciesMoveList(SPECIES[actor.mon.speciesId]);
+      const move = kit[Math.min(kit.length - 1, Math.floor(rng() * kit.length))] || primaryMove(actor.mon.speciesId);
+      const targets = move.aoe ? squad : [pickLowestHp(squad)];
+      for (const t of targets) {
+        if (t.hp <= 0) continue;
+        logs.push(resolveMoveForActor(actor.mon, t, move, rng, 'foe', { actorIndex: actor.index }));
+      }
+      continue;
+    }
+
+    const move = actor.side === 'player'
+      ? (playerMove || primaryMove(p.speciesId))
+      : primaryMove(actor.mon.speciesId);
+    const pierce = !!move.pierce;
+    const targets = legalFormationTargets(enemy, { pierce });
+    if (!targets.length) break;
+    let chosen;
+    if (actor.side === 'player' && playerTargetIndex >= 0 && enemy[playerTargetIndex]?.hp > 0) {
+      const want = enemy[playerTargetIndex];
+      chosen = targets.includes(want) ? want : targets[0];
+    } else {
+      chosen = pickLowestHp(targets);
+    }
+    logs.push(resolveMoveForActor(
+      actor.mon,
+      chosen,
+      move,
+      rng,
+      actor.side === 'player' ? 'player' : 'ally',
+      { targetIndex: enemy.indexOf(chosen) },
+    ));
+  }
+
+  let result = 'ongoing';
+  if (enemy.every((f) => f.hp <= 0) && p.hp <= 0) result = 'draw';
+  else if (enemy.every((f) => f.hp <= 0)) result = 'win';
+  else if (p.hp <= 0) result = 'lose';
+
+  return { player: p, allies: team, foes: enemy, logs, result };
+}

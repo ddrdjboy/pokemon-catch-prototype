@@ -291,6 +291,51 @@ const BASE_SPECIES = {
     sprite: 'assets/pokemon/zygarde.png',
     eyeOffset: { x: 0, y: -6 },
   },
+  remake_darkrai: {
+    id: 'remake_darkrai',
+    name: '改·达克莱伊',
+    type: 'dark',
+    base: { hp: 90, atk: 130, def: 90, spd: 125 },
+    move: { name: '暗黑洞', power: 100, type: 'dark' },
+    moves: [
+      { name: '暗黑洞', power: 100, type: 'dark' },
+      { name: '穿影袭', power: 85, type: 'ghost', pierce: true },
+      { name: '噩梦缠绕', power: 70, type: 'dark' },
+    ],
+    catchRate: 0.04,
+    sprite: 'assets/pokemon/remake_darkrai.png',
+    eyeOffset: { x: 0, y: -8 },
+  },
+  remake_cresselia: {
+    id: 'remake_cresselia',
+    name: '改·克雷色利亚',
+    type: 'psychic',
+    base: { hp: 120, atk: 85, def: 130, spd: 95 },
+    move: { name: '新月舞', power: 40, type: 'psychic' },
+    moves: [
+      { name: '新月舞', power: 40, type: 'psychic' },
+      { name: '月光守护', power: 1, type: 'psychic' },
+      { name: '幻影光线', power: 90, type: 'psychic' },
+    ],
+    catchRate: 0.05,
+    sprite: 'assets/pokemon/remake_cresselia.png',
+    eyeOffset: { x: 0, y: -8 },
+  },
+  remake_lunala: {
+    id: 'remake_lunala',
+    name: '改·露奈雅拉',
+    type: 'ghost',
+    base: { hp: 140, atk: 115, def: 110, spd: 105 },
+    move: { name: '暗影之光', power: 110, type: 'ghost' },
+    moves: [
+      { name: '暗影之光', power: 110, type: 'ghost' },
+      { name: '冥门横扫', power: 55, type: 'ghost', aoe: true },
+      { name: '满月冲击', power: 120, type: 'psychic' },
+    ],
+    catchRate: 0.04,
+    sprite: 'assets/pokemon/remake_lunala.png',
+    eyeOffset: { x: 0, y: -6 },
+  },
 };
 
 export const SPECIES = applyFinalMoveKits({ ...GENERATED_SPECIES, ...REGION_SPECIES, ...BASE_SPECIES });
@@ -712,6 +757,74 @@ const TWIN_MAP = {
   ],
 };
 
+export const NETHER_UNLOCK_LEVEL = 100;
+export const NETHER_UNLOCK_COUNT = 2;
+export const NETHER_SEAL_COST = 1;
+export const NETHER_BOSS_LEVEL = 200;
+export const NETHER_FRONT_LEVEL = 160;
+export const NETHER_BACK_MINION_LEVEL = 180;
+export const NETHER_SEAL = {
+  id: 'netherSeal',
+  name: '冥界符',
+  price: 5000,
+};
+
+export const GHOST_NETHER_MINIONS = {
+  front: [
+    { speciesId: 'misdreavus' },
+    { speciesId: 'sableye' },
+    { speciesId: 'shuppet' },
+    { speciesId: 'duskull' },
+    { speciesId: 'murkrow' },
+  ],
+  back: [
+    { speciesId: 'haunter' },
+    { speciesId: 'gengar' },
+  ],
+};
+
+export const GHOST_NETHER_BOSSES = [
+  { speciesId: 'remake_darkrai' },
+  { speciesId: 'remake_lunala' },
+  { speciesId: 'remake_cresselia' },
+];
+
+export const GHOST_NETHER_ALLIES = [
+  { speciesId: 'mega_salamence', level: 100 },
+  { speciesId: 'mega_dragonite', level: 100 },
+  { speciesId: 'garchomp', level: 100 },
+  { speciesId: 'mega_charizard', level: 100 },
+  { speciesId: 'mega_gengar', level: 100 },
+  { speciesId: 'latios', level: 100 },
+  { speciesId: 'zacian', level: 100 },
+  { speciesId: 'miraidon', level: 100 },
+];
+
+const GHOST_NETHER_MAP = {
+  id: 'ghost_nether',
+  name: '幽灵冥界',
+  image: 'assets/maps/ghost_nether.png',
+  bossChance: 0,
+  nether: true,
+  encounters: [
+    {
+      id: 'triad',
+      kind: 'wild',
+      formation: true,
+      x: 50,
+      y: 48,
+      front: GHOST_NETHER_MINIONS.front.map((s) => ({ ...s, level: NETHER_FRONT_LEVEL })),
+      back: [
+        { ...GHOST_NETHER_MINIONS.back[0], level: NETHER_BACK_MINION_LEVEL },
+        { ...GHOST_NETHER_BOSSES[0], level: NETHER_BOSS_LEVEL, boss: true },
+        { ...GHOST_NETHER_BOSSES[1], level: NETHER_BOSS_LEVEL, boss: true },
+        { ...GHOST_NETHER_BOSSES[2], level: NETHER_BOSS_LEVEL, boss: true },
+        { ...GHOST_NETHER_MINIONS.back[1], level: NETHER_BACK_MINION_LEVEL },
+      ],
+    },
+  ],
+};
+
 export const MAPS = {
   ...BASE_MAPS,
   ...GENERATED_MAPS,
@@ -719,6 +832,7 @@ export const MAPS = {
   rift: RIFT_MAP,
   twin_towers: TWIN_MAP,
   spirit_hall: SPIRIT_HALL_MAP,
+  ghost_nether: GHOST_NETHER_MAP,
 };
 
 export const SHINY_RATE_WITH_CHARM = 1 / 8;
@@ -832,6 +946,27 @@ export function trySpendTwinKey(state, party) {
   return { ok: true };
 }
 
+export function trySpendNetherSeal(state, party) {
+  if (partyOverLevelCount(party, NETHER_UNLOCK_LEVEL) < NETHER_UNLOCK_COUNT) {
+    return { ok: false, reason: 'level' };
+  }
+  const owned = state.netherSeals || 0;
+  if (owned < NETHER_SEAL_COST) return { ok: false, reason: 'seal' };
+  state.netherSeals = owned - NETHER_SEAL_COST;
+  return { ok: true };
+}
+
+export function createGhostNetherAllies(rng = Math.random) {
+  const pool = [...GHOST_NETHER_ALLIES];
+  const picked = [];
+  while (picked.length < 4 && pool.length) {
+    const i = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
+    const [slot] = pool.splice(i, 1);
+    picked.push(createPokemon(slot.speciesId, slot.level));
+  }
+  return picked;
+}
+
 /** Roll shiny and boss. Trainer rolls once per team member. Squad/dual bosses are fixed. */
 export function rollEncounter(tmpl, {
   hasCharm = false,
@@ -839,6 +974,29 @@ export function rollEncounter(tmpl, {
   rng = Math.random,
   shinyRate = SHINY_RATE_WITH_CHARM,
 } = {}) {
+  if (tmpl.formation && tmpl.front && tmpl.back) {
+    const make = (slot, row) => {
+      const isBoss = !!slot.boss;
+      const mon = createPokemon(slot.speciesId, slot.level, {
+        shiny: isBoss,
+        boss: isBoss,
+      });
+      return { ...mon, row };
+    };
+    const front = tmpl.front.map((s) => make(s, 'front'));
+    const back = tmpl.back.map((s) => make(s, 'back'));
+    const foes = [...front, ...back];
+    const lead = foes.find((f) => f.boss) || foes[0];
+    return {
+      ...tmpl,
+      formation: true,
+      shiny: true,
+      boss: true,
+      speciesId: lead.speciesId,
+      foes,
+      pokemon: lead,
+    };
+  }
   if (tmpl.dual && tmpl.foes?.length) {
     const foes = tmpl.foes.map((slot) => createPokemon(slot.speciesId, tmpl.level, {
       shiny: true,
@@ -896,6 +1054,12 @@ export function syncEncounters(saved, maps, roll) {
     const byId = new Map(current.map((e) => [e.id, e]));
     encounters[mapId] = map.encounters.map((tmpl) => {
       const prev = byId.get(tmpl.id);
+      if (tmpl.formation) {
+        const ready = prev?.formation
+          && prev.foes?.length === 10
+          && prev.foes.filter((f) => f.boss).length === 3;
+        return ready ? prev : roll(map, tmpl);
+      }
       if (tmpl.dual) {
         const ready = prev?.dual
           && prev.foes?.length === tmpl.foes.length

@@ -3738,6 +3738,14 @@ $('btn-sfx').addEventListener('click', () => {
   save();
   refreshSettingsPanel();
 });
+$('btn-test-grant')?.addEventListener('click', () => {
+  if (!state.items) state.items = emptyItems();
+  state.items.expCandyXXL = (state.items.expCandyXXL || 0) + 1000;
+  state.coins = (state.coins || 0) + 100000;
+  save();
+  refreshHeader();
+  showAppToast('测试物资：+1000 经验糖果 XXL，+100000 金币');
+});
 $('btn-close-shop').addEventListener('click', closeShop);
 $('shop-modal').addEventListener('click', (e) => {
   if (e.target === $('shop-modal')) closeShop();

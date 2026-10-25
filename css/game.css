@@ -1483,9 +1483,19 @@ button.danger {
   transform: scaleX(-1);
 }
 
+/* Host chip stays put (name/HP planted); flying art paints above every row. */
 .formation-chip.fx-dashing,
 .sprite-wrap.fx-dashing,
 .ally-chip.fx-dashing {
+  position: relative;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.formation-chip.fx-dashing .chip-art,
+.fx-dashing-art {
+  position: relative;
+  z-index: 40;
   will-change: transform;
   pointer-events: none;
 }

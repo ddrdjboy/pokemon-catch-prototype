@@ -250,9 +250,17 @@ function animateArcTranslate(el, fromX, fromY, toX, toY, ms, { bulge = 0, leanDe
   });
 }
 
+/** Prefer moving only the sprite art; leave name/HP (chip-meta) planted. */
+function dashArtEl(anchorEl) {
+  if (!anchorEl) return null;
+  return anchorEl.querySelector?.('.chip-art')
+    || anchorEl.querySelector?.('img:not(.fx-strip)')
+    || anchorEl;
+}
+
 /**
- * Rush attacker to just in front of defender along a slight arc, strike, then arc home.
- * Falls back to in-place lunge when geometry is unavailable.
+ * Rush attacker art to just in front of defender along a slight arc, strike, then arc home.
+ * Name/HP stay in the home slot. Falls back to in-place lunge when geometry is unavailable.
  */
 async function playDashStrike(attackerEl, defenderEl, side, {
   moveType,
@@ -266,8 +274,10 @@ async function playDashStrike(attackerEl, defenderEl, side, {
     return { played: mode === 'light' ? 'light' : 'medium' };
   }
 
-  const a = attackerEl.getBoundingClientRect();
-  const d = defenderEl.getBoundingClientRect();
+  const mover = dashArtEl(attackerEl);
+  const aim = dashArtEl(defenderEl);
+  const a = mover.getBoundingClientRect();
+  const d = aim.getBoundingClientRect();
   if (!(a.width > 0 && d.width > 0)) {
     await playLight(attackerEl, defenderEl, side);
     if (mode !== 'light') await playBurst(defenderEl, moveType);
@@ -289,15 +299,17 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   const bulge = Math.min(36, Math.max(14, dist * 0.18)) * (side === 'foe' ? -1 : 1);
   const leanDeg = side === 'foe' ? -8 : 8;
 
-  const prevTransition = attackerEl.style.transition;
-  const prevTransform = attackerEl.style.transform;
-  const prevZ = attackerEl.style.zIndex;
+  const prevTransition = mover.style.transition;
+  const prevTransform = mover.style.transform;
+  const prevZ = mover.style.zIndex;
+  // Raise the whole chip in the stacking order so flying art paints above every row.
   attackerEl.classList.add('fx-dashing');
-  attackerEl.style.zIndex = '24';
-  attackerEl.style.transition = 'none';
-  void attackerEl.offsetWidth;
+  mover.classList.add('fx-dashing-art');
+  mover.style.zIndex = '40';
+  mover.style.transition = 'none';
+  void mover.offsetWidth;
 
-  await animateArcTranslate(attackerEl, 0, 0, dx, dy, DASH_IN_MS, { bulge, leanDeg });
+  await animateArcTranslate(mover, 0, 0, dx, dy, DASH_IN_MS, { bulge, leanDeg });
 
   if (mode === 'heavy' && attackerSpeciesId) {
     await playFighterAttack(attackerEl, attackerSpeciesId, { side });
@@ -311,15 +323,16 @@ async function playDashStrike(attackerEl, defenderEl, side, {
   ]);
 
   // Arc back home with mirrored bulge so the hop reads continuous.
-  await animateArcTranslate(attackerEl, dx, dy, 0, 0, DASH_OUT_MS, {
+  await animateArcTranslate(mover, dx, dy, 0, 0, DASH_OUT_MS, {
     bulge: -bulge * 0.65,
     leanDeg: -leanDeg * 0.6,
   });
 
   attackerEl.classList.remove('fx-dashing');
-  attackerEl.style.transition = prevTransition;
-  attackerEl.style.transform = prevTransform;
-  attackerEl.style.zIndex = prevZ;
+  mover.classList.remove('fx-dashing-art');
+  mover.style.transition = prevTransition;
+  mover.style.transform = prevTransform;
+  mover.style.zIndex = prevZ;
 
   if (mode === 'heavy' && attackerSpeciesId) return { played: 'heavy-dash' };
   if (side === 'ally') return { played: mode === 'light' ? 'light-ally-dash' : 'medium-ally-dash' };

@@ -2024,8 +2024,14 @@ function startFormationBattle(playerMon) {
   renderBattle();
   $('battle-log').innerHTML = '<p>阵型对战开始！</p>';
   appendLog('4 只电脑宝可梦加入了小队。前排未清前无法锁定后排。');
+  playBattleBgm({
+    boss: true,
+    playerLevel: player.level,
+    foeLevel: Math.max(...foes.map((f) => f.level)),
+  });
   resetAttackButton();
   showScreen('battle');
+  preloadBattleFighterFrames();
 }
 
 function fillDualSlot(playerMon) {

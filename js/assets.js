@@ -2,7 +2,7 @@
  * Unified static asset URLs (cache-bust + pokemon thumb mapping).
  */
 
-export const ASSET_VER = 'imgopt1';
+export const ASSET_VER = 'nether15';
 
 /** @param {string} path */
 export function assetUrl(path) {

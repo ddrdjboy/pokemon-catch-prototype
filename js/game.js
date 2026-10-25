@@ -180,6 +180,7 @@ let catchQueueLock = false;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
+const FORMATION_DEATH_MS = 720;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -3021,23 +3022,44 @@ function formationHitElements(line) {
   };
 }
 
-/** Update chip HP bar in place; KO foes become empty placeholders without reflow. */
+/** Update chip HP bar in place. KO empty-slot swap is deferred to playFormationDeath. */
 function paintFormationChipHp(chip, mon) {
   if (!chip || !mon) return;
-  if (chip.dataset.foeIndex != null && mon.hp <= 0) {
-    chip.className = 'formation-chip down';
-    chip.disabled = true;
-    chip.setAttribute('aria-hidden', 'true');
-    chip.innerHTML = '<div class="chip-art"></div><div class="chip-meta"></div>';
-    return;
-  }
   const pct = formationChipHp(mon);
   const fill = chip.querySelector('.hp-fill');
   if (fill) {
     fill.style.width = `${pct}%`;
     fill.classList.toggle('low', pct <= 25);
   }
-  if (mon.hp <= 0) chip.classList.add('fainted');
+}
+
+/** Blink + fade, then empty foe slot (or faint party chip). */
+async function playFormationDeath(chip, { emptySlot = false } = {}) {
+  if (!chip || chip.classList.contains('down') || chip.classList.contains('fx-death')) return;
+  const foeIndex = chip.dataset.foeIndex;
+  chip.classList.remove('selected');
+  chip.classList.add('fx-death');
+  chip.disabled = true;
+  await wait(FORMATION_DEATH_MS);
+  chip.classList.remove('fx-death');
+  if (emptySlot) {
+    chip.className = 'formation-chip down';
+    if (foeIndex != null) chip.dataset.foeIndex = foeIndex;
+    chip.disabled = true;
+    chip.setAttribute('aria-hidden', 'true');
+    chip.innerHTML = '<div class="chip-art"></div><div class="chip-meta"></div>';
+    return;
+  }
+  chip.classList.add('fainted');
+}
+
+function formationLogTargetDied(line) {
+  if (line.effect) return false;
+  if (line.side === 'foe') {
+    if (line.target === 'ally') return (battle.allies?.[line.allyIndex]?.hp || 0) <= 0;
+    return (battle.player?.hp || 0) <= 0;
+  }
+  return (battle.foes?.[line.targetIndex]?.hp || 0) <= 0;
 }
 
 function applyFormationLogHp(line) {
@@ -3102,6 +3124,10 @@ async function playFormationTurnHits(turn) {
       enabled: state.damageNumbers !== false,
     });
     await wait(HP_ANIM_MS);
+    if (formationLogTargetDied(line) && defenderEl) {
+      const emptySlot = line.side === 'player' || line.side === 'ally';
+      await playFormationDeath(defenderEl, { emptySlot });
+    }
     if (i < turn.logs.length - 1) await wait(HIT_GAP_MS);
   }
   battle.player = turn.player;

@@ -1,4 +1,4 @@
-import { SPECIES, createPokemon } from '../js/data.js';
+import { SPECIES, createPokemon, MAPS } from '../js/data.js';
 import {
   FORMATION_FIELD_CAP,
   defaultLoadout,
@@ -120,6 +120,10 @@ console.log('formation side result');
   a.hp = 0;
   assert(formationSideResult([a], [b]) === 'draw', 'both down → draw');
 }
+
+console.log('final realm formation flag');
+assert(MAPS.final_realm?.battleMode === 'formation', 'final_realm uses formation battles');
+assert(MAPS.grassland?.battleMode !== 'formation', 'grassland stays classic');
 
 console.log(`formation-battle tests: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

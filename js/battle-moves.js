@@ -1,4 +1,5 @@
 import { SPECIES, typeMultiplier } from './data.js';
+import { moveRange } from './move-range.js';
 
 export function withBattleState(mon) {
   return {
@@ -9,9 +10,16 @@ export function withBattleState(mon) {
   };
 }
 
+function withMoveRange(move) {
+  const next = { ...move };
+  const range = moveRange(next);
+  if (range) next.range = range;
+  return next;
+}
+
 export function speciesMoveList(sp) {
-  if (sp?.moves?.length) return sp.moves.map((m) => ({ ...m }));
-  return sp?.move ? [{ ...sp.move }] : [];
+  if (sp?.moves?.length) return sp.moves.map(withMoveRange);
+  return sp?.move ? [withMoveRange(sp.move)] : [];
 }
 
 export function moveTarget(move) {

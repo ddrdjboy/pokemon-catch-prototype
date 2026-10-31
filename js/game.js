@@ -1144,6 +1144,7 @@ function openDexDetail(speciesId, mon = null) {
   if (!detail) return;
   renderDexDetail(detail, mon);
   $('dex-detail-modal').classList.remove('hidden');
+  void preloadFighterFrames([detail.id]);
 }
 
 function openPartyDetail(mon) {

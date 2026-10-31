@@ -1972,7 +1972,6 @@ export const REGION_MAPS = {
     "id": "final_realm",
     "name": "终焉领域",
     "image": "assets/maps/final_realm.png",
-    "battleMode": "formation",
     "bossChance": 0.3,
     "encounters": [
       {

@@ -121,8 +121,8 @@ console.log('formation side result');
   assert(formationSideResult([a], [b]) === 'draw', 'both down → draw');
 }
 
-console.log('final realm formation flag');
-assert(MAPS.final_realm?.battleMode === 'formation', 'final_realm uses formation battles');
+console.log('final realm stays classic');
+assert(MAPS.final_realm?.battleMode !== 'formation', 'final_realm stays classic 1v1');
 assert(MAPS.grassland?.battleMode !== 'formation', 'grassland stays classic');
 
 console.log(`formation-battle tests: ${passed} passed, ${failed} failed`);

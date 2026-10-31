@@ -763,6 +763,9 @@ body {
 .tag.type.type-dark { background: #705848; color: #fff; }
 .tag.type.type-steel { background: #B8B8D0; color: #1a1a1a; }
 .tag.type.type-fairy { background: #EE99AC; color: #1a1a1a; }
+.tag.range { background: #546e7a; color: #eceff1; }
+.tag.range.range-melee { background: #bf360c; color: #fff; }
+.tag.range.range-ranged { background: #0277bd; color: #fff; }
 
 button {
   border: 1px solid var(--border);

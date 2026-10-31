@@ -155,3 +155,18 @@ export function moveRange(move) {
 export function moveIsRanged(move) {
   return moveRange(move) === 'ranged';
 }
+
+/** Chinese label for UI pills. Empty string if not a damage range. */
+export function rangeLabel(rangeOrMove) {
+  const range = typeof rangeOrMove === 'string' ? rangeOrMove : moveRange(rangeOrMove);
+  if (range === 'ranged') return '远程';
+  if (range === 'melee') return '近战';
+  return '';
+}
+
+/** Pill classes matching `.tag.type.type-*` style. */
+export function rangeTagClass(rangeOrMove) {
+  const range = typeof rangeOrMove === 'string' ? rangeOrMove : moveRange(rangeOrMove);
+  if (range !== 'melee' && range !== 'ranged') return '';
+  return `tag range range-${range}`;
+}

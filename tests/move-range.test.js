@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { moveIsRanged, moveRange, MOVE_RANGE } from '../js/move-range.js';
+import { moveIsRanged, moveRange, rangeLabel, rangeTagClass, MOVE_RANGE } from '../js/move-range.js';
 import { SPECIES } from '../js/data.js';
 import { speciesMoveList } from '../js/battle-moves.js';
 
@@ -35,5 +35,12 @@ for (const sp of Object.values(SPECIES)) {
 }
 assert.ok(seen.size >= 80, `expected a broad move set, got ${seen.size}`);
 assert.ok(MOVE_RANGE.水枪 === 'ranged' && MOVE_RANGE.撞击 === 'melee', 'table entries');
+
+assert.equal(rangeLabel('melee'), '近战');
+assert.equal(rangeLabel('ranged'), '远程');
+assert.equal(rangeLabel({ name: '水枪', power: 40, type: 'water' }), '远程');
+assert.equal(rangeTagClass('melee'), 'tag range range-melee');
+assert.equal(rangeTagClass('ranged'), 'tag range range-ranged');
+assert.equal(rangeTagClass({ name: '睡觉', power: 0, type: 'normal', effect: 'heal' }), '');
 
 console.log('move-range ok');

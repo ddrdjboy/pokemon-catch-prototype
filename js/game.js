@@ -65,7 +65,7 @@ import {
   resolveFormationTurn,
   legalFormationTargets,
 } from './battle.js';
-import { moveIsRanged } from './move-range.js';
+import { moveIsRanged, moveRange, rangeLabel, rangeTagClass } from './move-range.js';
 import {
   hasFighterFrames,
   normalizeBattleAnim,
@@ -269,10 +269,17 @@ function renderMoveButtons(mon, { dualSlot = null, continueMode = false } = {}) 
       const typeTag = document.createElement('span');
       typeTag.className = typeTagClass(move.type);
       typeTag.textContent = typeLabel(move.type);
+      tags.appendChild(typeTag);
+      const range = move.range || moveRange(move);
+      if (range) {
+        const rangeTag = document.createElement('span');
+        rangeTag.className = rangeTagClass(range);
+        rangeTag.textContent = rangeLabel(range);
+        tags.appendChild(rangeTag);
+      }
       const powerTag = document.createElement('span');
       powerTag.className = 'tag power';
       powerTag.textContent = `威力 ${move.power}`;
-      tags.appendChild(typeTag);
       tags.appendChild(powerTag);
     }
     btn.appendChild(name);
@@ -529,13 +536,43 @@ function renderDualMoveButtons(mon) {
     btn.type = 'button';
     btn.className = 'primary move-btn';
     const kind = moveTarget(move);
+    const name = document.createElement('span');
+    name.className = 'move-btn-name';
+    name.textContent = move.name;
+    const tags = document.createElement('span');
+    tags.className = 'move-btn-tags tags';
     if (move.effect) {
-      btn.textContent = `${move.name} · ${move.effect === 'heal' ? '回复' : move.effect === 'atk' ? '加攻' : '加防'}`;
+      const effectTag = document.createElement('span');
+      effectTag.className = 'tag effect';
+      effectTag.textContent = move.effect === 'heal' ? '回复' : move.effect === 'atk' ? '加攻' : '加防';
+      tags.appendChild(effectTag);
       btn.disabled = !!mon.usedUtility;
       if (mon.usedUtility) btn.dataset.locked = '1';
     } else {
-      btn.textContent = `${move.name} · ${typeLabel(move.type)} · 威力 ${move.power}${kind === 'foes' ? ' · 全体' : ''}`;
+      const typeTag = document.createElement('span');
+      typeTag.className = typeTagClass(move.type);
+      typeTag.textContent = typeLabel(move.type);
+      tags.appendChild(typeTag);
+      const range = move.range || moveRange(move);
+      if (range) {
+        const rangeTag = document.createElement('span');
+        rangeTag.className = rangeTagClass(range);
+        rangeTag.textContent = rangeLabel(range);
+        tags.appendChild(rangeTag);
+      }
+      const powerTag = document.createElement('span');
+      powerTag.className = 'tag power';
+      powerTag.textContent = `威力 ${move.power}`;
+      tags.appendChild(powerTag);
+      if (kind === 'foes') {
+        const aoeTag = document.createElement('span');
+        aoeTag.className = 'tag effect';
+        aoeTag.textContent = '全体';
+        tags.appendChild(aoeTag);
+      }
     }
+    btn.appendChild(name);
+    btn.appendChild(tags);
     btn.addEventListener('click', () => onDualPickMove(move));
     box.appendChild(btn);
   }
@@ -1047,11 +1084,14 @@ function renderDexDetail(detail, mon = null) {
   const catchPct = Math.round((detail.catchRate ?? 0) * 100);
   const effectLabel = { heal: '回复', atk: '加攻', def: '加防' };
   const moveLines = detail.moves
-    .map((m) => (
-      m.effect
-        ? `<li>${m.name}（${effectLabel[m.effect]}）</li>`
-        : `<li>${m.name}（${typeLabel(m.type)} · 威力 ${m.power}）</li>`
-    ))
+    .map((m) => {
+      if (m.effect) return `<li>${m.name}（${effectLabel[m.effect]}）</li>`;
+      const range = moveRange(m);
+      const rangePill = range
+        ? ` <span class="${rangeTagClass(range)}">${rangeLabel(range)}</span>`
+        : '';
+      return `<li>${m.name} <span class="${typeTagClass(m.type)}">${typeLabel(m.type)}</span>${rangePill} · 威力 ${m.power}</li>`;
+    })
     .join('');
   const evo = detail.evolvesToName
     ? `进化：Lv.${detail.evolveLevel} → ${detail.evolvesToName}`

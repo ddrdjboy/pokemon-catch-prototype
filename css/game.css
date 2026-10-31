@@ -1292,6 +1292,10 @@ button.danger {
     drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
+.formation-chip.melee-blocked {
+  opacity: 0.55;
+}
+
 /* Foe KO: invisible but still occupies the 1/5 slot. */
 .formation-chip.down {
   opacity: 0;

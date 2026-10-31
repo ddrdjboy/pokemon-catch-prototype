@@ -35,6 +35,7 @@ import {
 import { gainExperience, xpReward, xpToNext, tryEvolve, EVOLVE_LEVEL, EVOLVE_LEVEL_MEGA } from '../js/level.js';
 import { partyIndividualView } from '../js/party-detail.js';
 import { SPECIES, MAPS, listDexEntries, listDexTypes, getDexDetail } from '../js/data.js';
+import { moveIsRanged } from '../js/move-range.js';
 import { selectBattleTrack, sfxKeyForMoveType, playCatchSuccessSfx } from '../js/audio.js';
 import {
   generateMazeFloor,
@@ -494,16 +495,55 @@ assert(formation.formation && formation.foes.length === 10, 'formation rolls 10 
 assert(formation.foes.filter((f) => f.row === 'front').length === 5, '5 front');
 assert(formation.foes.filter((f) => f.row === 'back').length === 5, '5 back');
 assert(formation.foes.filter((f) => f.boss).length === 3, '3 bosses');
+assert(formation.foes.every((f) => Number.isInteger(f.col) && f.col >= 0 && f.col <= 4), 'each foe has col 0-4');
+const byCol = (row, col) => formation.foes.find((f) => f.row === row && f.col === col);
+assert(byCol('front', 2) && byCol('back', 2), 'col2 has front and back');
+for (let i = 0; i < 5; i += 1) {
+  assert(byCol('front', i).col === i && byCol('back', i).col === i, `aligned col ${i}`);
+}
 const allies4 = createGhostNetherAllies(() => 0.1);
 assert(allies4.length === 4 && new Set(allies4.map((a) => a.speciesId)).size === 4, '4 distinct allies');
 
 const formFoes = formation.foes.map((f) => ({ ...f }));
-const legalFront = legalFormationTargets(formFoes, { pierce: false });
-assert(legalFront.length === 5 && legalFront.every((f) => f.row === 'front'), 'default lock front only');
-const legalPierce = legalFormationTargets(formFoes, { pierce: true });
-assert(legalPierce.length === 10, 'pierce can lock all');
-formFoes.filter((f) => f.row === 'front').forEach((f) => { f.hp = 0; });
-assert(legalFormationTargets(formFoes, { pierce: false }).every((f) => f.row === 'back'), 'back opens after front clear');
+const meleeLegal = legalFormationTargets(formFoes, { ranged: false });
+assert(meleeLegal.length === 5 && meleeLegal.every((f) => f.row === 'front'), 'melee: only fronts while all fronts up');
+assert(legalFormationTargets(formFoes, { ranged: true }).length === 10, 'ranged locks all living');
+assert(
+  legalFormationTargets(formFoes, { pierce: true }).length === 10,
+  'pierce option still counts as ranged',
+);
+
+const col2Front = formFoes.find((f) => f.row === 'front' && f.col === 2);
+col2Front.hp = 0;
+const afterCol = legalFormationTargets(formFoes, { ranged: false });
+assert(afterCol.some((f) => f.row === 'back' && f.col === 2), 'melee can lock back col2 after front down');
+assert(!afterCol.some((f) => f.row === 'back' && f.col === 1), 'other back cols still blocked');
+assert(
+  legalFormationTargets(formFoes, { ranged: moveIsRanged({ name: '穿影袭', pierce: true }) }).length
+    === formFoes.filter((f) => f.hp > 0).length,
+  'pierce moveIsRanged opens all living',
+);
+
+{
+  const blockedBack = formation.foes.findIndex((f) => f.row === 'back' && f.col === 0);
+  const beforeHp = formation.foes[blockedBack].hp;
+  const meleeLead = createPokemon('growlithe', 100);
+  meleeLead.spd = 9999;
+  const meleeTurn = resolveFormationTurn(
+    meleeLead,
+    createGhostNetherAllies(() => 0).slice(0, 4).map((a) => ({ ...a, spd: 1 })),
+    formation.foes.map((f) => ({ ...f, spd: 1 })),
+    {
+      rng: () => 0,
+      playerTargetIndex: blockedBack,
+      playerMove: { name: '咬住', power: 45, type: 'dark' },
+    },
+  );
+  const playerHit = meleeTurn.logs.find((l) => l.side === 'player' && l.damage > 0);
+  assert(playerHit, 'melee player still attacks when aim blocked');
+  assert(meleeTurn.foes[blockedBack].hp === beforeHp, 'blocked back not damaged by melee');
+  assert(playerHit.targetIndex !== blockedBack, 'melee fallback avoids blocked back index');
+}
 
 const formPlayer = createPokemon('mega_charizard', 140);
 const formAllies = createGhostNetherAllies(() => 0.2);

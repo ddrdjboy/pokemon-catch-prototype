@@ -8,6 +8,7 @@ import {
   moveTarget,
   chooseDualFoeCmd,
 } from './battle-moves.js';
+import { moveIsRanged } from './move-range.js';
 
 /** Critical hits land when rng() is below this rate (about 1/16). */
 export const CRIT_RATE = 1 / 16;
@@ -410,12 +411,18 @@ export function whoGoesFirstDeterministic(a, b) {
 
 export { speciesMoveList };
 
-/** Living foes the attacker may lock. pierce ignores front-row gate. */
-export function legalFormationTargets(foes, { pierce = false } = {}) {
+/** Living foes the attacker may lock. Ranged (or legacy pierce) ignores column gate. */
+export function legalFormationTargets(foes, opts = {}) {
+  const ranged = opts.ranged ?? !!opts.pierce;
   const living = foes.filter((f) => f.hp > 0);
-  const frontUp = living.some((f) => f.row === 'front');
-  if (!pierce && frontUp) return living.filter((f) => f.row === 'front');
-  return living;
+  if (ranged) return living;
+  const frontUpByCol = new Set(
+    living.filter((f) => f.row === 'front').map((f) => f.col),
+  );
+  return living.filter((f) => {
+    if (f.row === 'front') return true;
+    return !frontUpByCol.has(f.col);
+  });
 }
 
 function pickLowestHp(targets) {
@@ -477,14 +484,18 @@ export function resolveFormationTurn(player, allies, foes, {
     const move = actor.side === 'player'
       ? (playerMove || primaryMove(p.speciesId))
       : primaryMove(actor.mon.speciesId);
-    // Player respects front-row gate (same as UI); allies pierce only if the move has pierce.
-    const pierce = !!move.pierce;
-    const targets = legalFormationTargets(enemy, { pierce });
+    const ranged = moveIsRanged(move);
+    const targets = legalFormationTargets(enemy, { ranged });
     if (!targets.length) break;
     let chosen;
     if (actor.side === 'player' && playerTargetIndex >= 0 && enemy[playerTargetIndex]?.hp > 0) {
       const want = enemy[playerTargetIndex];
-      chosen = targets.includes(want) ? want : targets[0];
+      if (targets.includes(want)) {
+        chosen = want;
+      } else {
+        const sameCol = targets.find((t) => t.col === want.col) || null;
+        chosen = sameCol || pickLowestHp(targets);
+      }
     } else {
       chosen = pickLowestHp(targets);
     }

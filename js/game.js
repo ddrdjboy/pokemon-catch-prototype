@@ -2785,6 +2785,7 @@ function finishBattleWin(evolved) {
   for (const p of state.party) p.hp = p.maxHp;
   save();
   setTimeout(() => {
+    formation = null;
     if (enc.kind === 'trainer' || enc.dual) openCatchPick();
     else enterCatch(enc);
   }, evolved ? 1400 : 900);

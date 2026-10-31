@@ -55,6 +55,13 @@ import {
   itemEffectLabel,
 } from './items.js';
 import {
+  resolveItemsUiMode,
+  itemsModalTitle,
+  shouldDisableItemRow,
+  canEnableUseItemButton,
+  shouldCloseItemsModalOnBusy,
+} from './items-ui-mode.js';
+import {
   nextBattleStep,
   resolveDualTurn,
   resolveDualItemTurn,
@@ -181,6 +188,8 @@ let dualCmds = [null, null];
 let dualSwitchBackup = [null, null];
 let pendingMove = null;
 let itemsUiSelectedId = null;
+/** @type {'browse' | 'use' | null} */
+let itemsUiMode = null;
 let mazeRun = null;
 let mazePath = [];
 let mazeDest = null;
@@ -378,7 +387,20 @@ function ownedItemUsableInBattle(item) {
 }
 
 function isBattleScreenActive() {
-  return !!battle && !screens.battle.classList.contains('hidden');
+  const battleVisible = screens.battle && !screens.battle.classList.contains('hidden');
+  const formation = screens['formation-battle'];
+  const formationVisible = formation && !formation.classList.contains('hidden');
+  return !!((battle && battleVisible) || formationVisible);
+}
+
+function canUseBattleItem() {
+  if (!battle) return false;
+  const anyUsable = Object.values(ITEMS).some((item) => ownedItemUsableInBattle(item));
+  return canEnableUseItemButton({
+    busy: !!battleBusy,
+    continueWait: !!continueResolver,
+    anyUsable,
+  });
 }
 
 function formationPlayerMove() {
@@ -409,14 +431,21 @@ function ensureFormationTarget() {
   battle.selectedTarget = battle.foes.indexOf(prefer);
 }
 
-function updateItemButton() {
-  const btn = $('btn-items');
+function updateUseItemButton() {
+  const btn = $('btn-use-item');
   if (!btn) return;
-  btn.disabled = false;
+  btn.disabled = !canUseBattleItem();
+}
+
+function updateItemButton() {
+  const top = $('btn-items');
+  if (top) top.disabled = false;
+  updateUseItemButton();
 }
 
 function closeItemsModal() {
   itemsUiSelectedId = null;
+  itemsUiMode = null;
   $('items-modal')?.classList.add('hidden');
   $('items-step-list')?.classList.remove('hidden');
   $('items-step-target')?.classList.add('hidden');
@@ -435,8 +464,13 @@ function setBattleActionBusy(busy) {
     const el = $(id);
     if (el) el.disabled = busy;
   }
-  if (busy) closeItemPanel();
-  updateItemButton();
+  if (busy) {
+    if (shouldCloseItemsModalOnBusy(itemsUiMode)) closeItemPanel();
+    const useBtn = $('btn-use-item');
+    if (useBtn) useBtn.disabled = true;
+  } else {
+    updateItemButton();
+  }
 }
 
 function resetAttackButton() {
@@ -2720,6 +2754,8 @@ function finishDualTurnOutcome(turn) {
     appendLog('同归于尽…你败北了。');
     setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
+    const useLose = $('btn-use-item');
+    if (useLose) useLose.disabled = true;
     setTimeout(() => leaveBattle(), evolved ? 1400 : 900);
     return;
   }
@@ -2727,6 +2763,8 @@ function finishDualTurnOutcome(turn) {
     appendLog('你没有可以继续对战的宝可梦了…');
     setMoveButtonsBusy(true);
     $('btn-flee-battle').disabled = true;
+    const useLose = $('btn-use-item');
+    if (useLose) useLose.disabled = true;
     setTimeout(() => leaveBattle(), 900);
     return;
   }
@@ -2754,6 +2792,8 @@ function finishFormationTurnOutcome(turn) {
       : '你的宝可梦倒下了…阵型战失败。');
     $('btn-attack').disabled = true;
     $('btn-flee-battle').disabled = true;
+    const useLose = $('btn-use-item');
+    if (useLose) useLose.disabled = true;
     setTimeout(() => leaveBattle(), 900);
     return;
   }
@@ -3020,6 +3060,8 @@ function renderItemsModalList() {
   if (!list) return;
   list.innerHTML = '';
   const inBattle = isBattleScreenActive();
+  const mode = itemsUiMode || (inBattle ? 'browse' : 'use');
+
   for (const item of Object.values(ITEMS)) {
     const owned = state.items?.[item.id] || 0;
     if (owned <= 0) continue;
@@ -3029,8 +3071,10 @@ function renderItemsModalList() {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'item-row';
-    row.disabled = !usable;
-    if (!usable) row.title = '现在不能使用';
+    row.disabled = shouldDisableItemRow({ mode, usable });
+    if (row.disabled) {
+      row.title = mode === 'browse' ? '战斗中请用下方「使用道具」' : '现在不能使用';
+    }
     row.innerHTML = `
       <span class="item-icon">${item.icon}</span>
       <span class="item-name">${item.name}</span>
@@ -3038,6 +3082,7 @@ function renderItemsModalList() {
       <span class="item-owned">×${owned}</span>
     `;
     row.addEventListener('click', () => {
+      if (shouldDisableItemRow({ mode, usable })) return;
       if (inBattle) onUseItem(item.id);
       else openItemsTargetPicker(item.id);
     });
@@ -3081,7 +3126,7 @@ function backToItemsList() {
   $('items-step-list')?.classList.remove('hidden');
   $('items-step-target')?.classList.add('hidden');
   const title = $('items-title');
-  if (title) title.textContent = '道具';
+  if (title) title.textContent = itemsModalTitle(itemsUiMode || 'use');
   renderItemsModalList();
 }
 
@@ -3115,13 +3160,21 @@ function onItemsUseOutOfBattle(uid) {
   closeItemsModal();
 }
 
-function openItemsUi() {
-  if (isBattleScreenActive() && (battleBusy || continueResolver)) return;
-  $('items-title').textContent = '道具';
-  $('items-step-list').classList.remove('hidden');
-  $('items-step-target').classList.add('hidden');
+function openItemsUi(opts = {}) {
+  const source = opts.source || 'top';
+  const inBattle = isBattleScreenActive();
+  const mode = opts.mode || resolveItemsUiMode({ source, inBattle });
+
+  if (mode === 'use' && inBattle && (battleBusy || continueResolver)) return;
+
+  itemsUiMode = mode;
+  itemsUiSelectedId = null;
+  const title = $('items-title');
+  if (title) title.textContent = itemsModalTitle(mode);
+  $('items-step-list')?.classList.remove('hidden');
+  $('items-step-target')?.classList.add('hidden');
   renderItemsModalList();
-  $('items-modal').classList.remove('hidden');
+  $('items-modal')?.classList.remove('hidden');
 }
 
 function formationFoeChip(index) {
@@ -4072,7 +4125,11 @@ window.addEventListener('keydown', (e) => {
   clearMazePath();
   tryMazeStep(d[0], d[1]);
 });
-$('btn-items')?.addEventListener('click', openItemsUi);
+$('btn-items')?.addEventListener('click', () => openItemsUi({ source: 'top' }));
+$('btn-use-item')?.addEventListener('click', () => {
+  if (battleBusy || continueResolver) return;
+  openItemsUi({ source: 'use-btn', mode: 'use' });
+});
 $('btn-close-items')?.addEventListener('click', closeItemsModal);
 $('items-modal')?.addEventListener('click', (e) => {
   if (e.target === $('items-modal')) closeItemsModal();
@@ -4101,7 +4158,9 @@ $('formation-commands')?.addEventListener('click', (e) => {
     return;
   }
   if (cmd === 'item') {
-    $('formation-prompt').textContent = '编队战道具暂未开放';
+    if (battleBusy || continueResolver) return;
+    openItemsUi({ source: 'use-btn', mode: 'use' });
+    return;
   }
 });
 $('btn-flee-formation')?.addEventListener('click', () => {

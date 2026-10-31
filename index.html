@@ -178,6 +178,28 @@
       </div>
     </section>
 
+    <!-- Screen: formation battle (Final Realm pilot) -->
+    <section id="screen-formation-battle" class="screen hidden">
+      <div class="panel formation-panel">
+        <div id="formation-stage" class="formation-stage">
+          <img id="formation-bg" class="formation-bg" alt="" />
+          <div id="formation-foes" class="formation-side foes"></div>
+          <div id="formation-players" class="formation-side players"></div>
+        </div>
+        <p id="formation-prompt" class="formation-prompt"></p>
+        <div id="formation-commands" class="formation-commands">
+          <button type="button" data-cmd="attack">攻击</button>
+          <button type="button" data-cmd="skill">技能</button>
+          <button type="button" data-cmd="item">道具</button>
+          <button type="button" data-cmd="defend">防御</button>
+          <button type="button" id="btn-flee-formation" class="flee-btn">逃跑</button>
+        </div>
+        <div id="formation-skill-list" class="formation-skill-list hidden"></div>
+        <div id="formation-target-list" class="formation-target-list hidden"></div>
+        <div id="formation-log" class="battle-log"></div>
+      </div>
+    </section>
+
     <!-- Screen: catch -->
     <section id="screen-catch" class="screen hidden">
       <div class="panel">

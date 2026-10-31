@@ -105,6 +105,17 @@ import {
 import { partyIndividualView } from './party-detail.js';
 import { paintMazeMinimap, MAZE_MINIMAP_SIZE } from './maze-minimap.js';
 import { assetUrl, pokemonUrl, preloadImages } from './assets.js';
+import {
+  FORMATION_FIELD_CAP,
+  ensureLoadout,
+  skillMovesFor,
+  applyLoadoutEdit,
+} from './loadout.js';
+import {
+  fieldParty,
+  resolveFormationRound,
+  chooseFoeFormationCommands,
+} from './formation-battle.js';
 
 const STORAGE_KEY = 'poke-catch-prototype-v1';
 /** First N map cards load eagerly; the rest use loading=lazy. */
@@ -147,6 +158,7 @@ const screens = {
   maze: $('screen-maze'),
   pick: $('screen-pick'),
   battle: $('screen-battle'),
+  'formation-battle': $('screen-formation-battle'),
   catch: $('screen-catch'),
 };
 
@@ -178,6 +190,8 @@ let mazeStickTimer = null;
 let mazeStickPointer = null;
 /** Blocks skip/advance while a formation catch claim is settling. */
 let catchQueueLock = false;
+/** Magical Online-style Final Realm battle (separate from nether 阵型战). */
+let realmFormation = null;
 
 const HP_ANIM_MS = 550;
 const HIT_GAP_MS = 280;
@@ -1109,6 +1123,30 @@ function renderDexDetail(detail, mon = null) {
         </div>
       </div>`
     : '';
+  let loadoutHtml = '';
+  if (mon) {
+    const sp = SPECIES[mon.speciesId];
+    const loadout = ensureLoadout(mon, sp);
+    const kit = speciesMoveList(sp);
+    loadoutHtml = `
+      <div class="loadout-editor">
+        <h3>编队配招</h3>
+        <label>普攻
+          <select id="loadout-basic">
+            ${kit.map((m) => `<option value="${m.name}" ${m.name === loadout.basicMoveName ? 'selected' : ''}>${m.name}</option>`).join('')}
+          </select>
+        </label>
+        <div class="loadout-skills">技能（最多 3）
+          ${kit.map((m) => `
+            <label><input type="checkbox" data-skill="${m.name}"
+              ${loadout.skillMoveNames.includes(m.name) ? 'checked' : ''}
+              ${m.name === loadout.basicMoveName ? 'disabled' : ''}/> ${m.name}</label>
+          `).join('')}
+        </div>
+        <button type="button" id="btn-save-loadout">保存配招</button>
+      </div>
+    `;
+  }
   $('dex-detail-title').textContent = detail.name;
   root.innerHTML = `
     <div class="dex-hero-wrap">
@@ -1123,6 +1161,7 @@ function renderDexDetail(detail, mon = null) {
     <div class="stats">种族值：HP ${detail.base.hp} · 攻 ${detail.base.atk} · 防 ${detail.base.def} · 速 ${detail.base.spd}</div>
     <div class="moves">招式：<ul>${moveLines}</ul></div>
     <div class="extra">捕捉率：${catchPct}%<br>${evo}</div>
+    ${loadoutHtml}
   `;
   const animBtn = $('btn-dex-anim');
   if (animBtn) {
@@ -1137,6 +1176,18 @@ function renderDexDetail(detail, mon = null) {
       }
     });
   }
+  $('btn-save-loadout')?.addEventListener('click', () => {
+    if (!mon) return;
+    const sp = SPECIES[mon.speciesId];
+    const basicMoveName = $('loadout-basic').value;
+    const skillMoveNames = [...root.querySelectorAll('input[data-skill]:checked')]
+      .map((el) => el.dataset.skill)
+      .filter((n) => n !== basicMoveName)
+      .slice(0, 3);
+    if (!applyLoadoutEdit(mon, sp, { basicMoveName, skillMoveNames })) return;
+    save();
+    $('btn-save-loadout').textContent = '已保存';
+  });
 }
 
 function openDexDetail(speciesId, mon = null) {
@@ -1925,6 +1976,11 @@ function foeIntro(enc) {
 
 function startPick(enc) {
   pendingEncounter = prepareEncounter(enc);
+  const map = MAPS[currentMapId];
+  if (map?.battleMode === 'formation') {
+    startRealmFormationBattle(pendingEncounter);
+    return;
+  }
   $('btn-cancel-pick').classList.remove('hidden');
   $('btn-cancel-pick').textContent = '取消';
   $('pick-foe-info').textContent = foeIntro(pendingEncounter);
@@ -2344,7 +2400,10 @@ function setHpBar(id, hp, max) {
 }
 
 function appendLog(text) {
-  const log = $('battle-log');
+  const onRealm = realmFormation && screens['formation-battle']
+    && !screens['formation-battle'].classList.contains('hidden');
+  const log = onRealm ? $('formation-log') : $('battle-log');
+  if (!log) return;
   const p = document.createElement('p');
   p.textContent = text;
   log.appendChild(p);
@@ -3322,9 +3381,278 @@ function openCatchPick() {
   showScreen('pick');
 }
 
+function realmFoesFromEncounter(enc) {
+  if (enc.kind === 'trainer') {
+    return (enc.foeTeam || enc.team || []).slice(0, FORMATION_FIELD_CAP).map((m) => ({
+      ...m,
+      hp: m.hp ?? m.maxHp,
+    }));
+  }
+  const foe = enc.activeFoe || enc.pokemon;
+  return [{ ...foe, hp: foe.hp ?? foe.maxHp }];
+}
+
+function livingRealmSide(side) {
+  return realmFormation[side].filter((m) => m.hp > 0);
+}
+
+function realmUnitSlotStyle(side, index, total) {
+  const t = total <= 1 ? 0.5 : index / (total - 1);
+  if (side === 'player') {
+    return { left: `${8 + t * 28}%`, bottom: `${12 + (index % 2) * 18}%` };
+  }
+  return { right: `${8 + t * 28}%`, bottom: `${14 + (index % 2) * 18}%` };
+}
+
+function renderRealmFormationStage() {
+  if (!realmFormation) return;
+  const paint = (el, list, side) => {
+    el.innerHTML = '';
+    const living = list.filter((m) => m.hp > 0);
+    living.forEach((mon, index) => {
+      const sp = SPECIES[mon.speciesId];
+      const div = document.createElement('div');
+      div.className = 'formation-unit';
+      div.dataset.uid = mon.uid;
+      Object.assign(div.style, realmUnitSlotStyle(side, index, living.length));
+      if (realmFormation.phase === 'command' && side === 'player'
+        && living[realmFormation.pickIndex]?.uid === mon.uid) {
+        div.classList.add('active-pick');
+      }
+      const pct = Math.max(0, Math.round((mon.hp / mon.maxHp) * 100));
+      div.innerHTML = `
+        <div class="mini-hp"><i style="width:${pct}%"></i></div>
+        <img src="${pokemonUrl(sp.sprite, 'full')}" alt="${sp.name}" />
+        <div class="mini-name">${sp.name}</div>
+      `;
+      el.appendChild(div);
+    });
+  };
+  paint($('formation-players'), realmFormation.players, 'player');
+  paint($('formation-foes'), realmFormation.foes, 'foe');
+}
+
+function currentRealmActor() {
+  return livingRealmSide('players')[realmFormation.pickIndex] || null;
+}
+
+function beginRealmCommandPhase() {
+  realmFormation.playerCommands = [];
+  realmFormation.pickIndex = 0;
+  realmFormation.phase = 'command';
+  $('formation-skill-list').classList.add('hidden');
+  $('formation-target-list').classList.add('hidden');
+  $('formation-commands').classList.remove('hidden');
+  const cur = currentRealmActor();
+  $('formation-prompt').textContent = cur
+    ? `请为 ${SPECIES[cur.speciesId].name} 选择指令`
+    : '';
+  renderRealmFormationStage();
+}
+
+/** Magical Online-style Final Realm battle (not nether 阵型战). */
+function startRealmFormationBattle(enc) {
+  const players = fieldParty(activeParty(state.party)).map((m) => {
+    const sp = SPECIES[m.speciesId];
+    ensureLoadout(m, sp);
+    return withBattleState({ ...m });
+  });
+  if (!players.length) {
+    openMap(currentMapId);
+    return;
+  }
+  const foes = realmFoesFromEncounter(enc).map((m) => {
+    if (!m.uid) m.uid = `${m.speciesId}-foe-${Math.random().toString(36).slice(2, 7)}`;
+    const sp = SPECIES[m.speciesId];
+    if (sp) ensureLoadout(m, sp);
+    return withBattleState({ ...m });
+  });
+  realmFormation = {
+    enc,
+    players,
+    foes,
+    playerCommands: [],
+    pickIndex: 0,
+    phase: 'command',
+  };
+  pendingEncounter = enc;
+  battle = {
+    player: players[0],
+    foe: foes[0],
+    playerUid: players[0].uid,
+    allies: null,
+    dual: false,
+    formation: false,
+    realmFormation: true,
+  };
+  $('formation-log').innerHTML = '';
+  $('formation-bg').src = assetUrl(MAPS[currentMapId].image);
+  $('btn-flee-formation').classList.toggle('hidden', enc.kind === 'trainer');
+  appendLog('编队战开始！');
+  beginRealmCommandPhase();
+  const maxFoeLv = Math.max(...foes.map((f) => f.level || 1));
+  playBattleBgm({
+    rift: false,
+    playerLevel: players[0].level,
+    foeLevel: maxFoeLv,
+  });
+  showScreen('formation-battle');
+}
+
+function pushRealmCommand(cmd) {
+  realmFormation.playerCommands.push(cmd);
+  realmFormation.pickIndex += 1;
+  if (realmFormation.pickIndex >= livingRealmSide('players').length) {
+    runRealmFormationResolve();
+    return;
+  }
+  realmFormation.phase = 'command';
+  $('formation-skill-list').classList.add('hidden');
+  $('formation-target-list').classList.add('hidden');
+  $('formation-commands').classList.remove('hidden');
+  const cur = currentRealmActor();
+  $('formation-prompt').textContent = `请为 ${SPECIES[cur.speciesId].name} 选择指令`;
+  renderRealmFormationStage();
+}
+
+function openRealmSkills(actor) {
+  const sp = SPECIES[actor.speciesId];
+  const skills = skillMovesFor(actor, sp);
+  const box = $('formation-skill-list');
+  box.innerHTML = '';
+  if (!skills.length) {
+    $('formation-prompt').textContent = '没有可配置的技能，改为攻击';
+    pickRealmTarget(actor, { action: 'attack' });
+    return;
+  }
+  realmFormation.phase = 'skill';
+  $('formation-commands').classList.add('hidden');
+  box.classList.remove('hidden');
+  for (const move of skills) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = move.effect ? `${move.name}（效果）` : `${move.name}`;
+    b.addEventListener('click', () => {
+      if (move.effect) {
+        pushRealmCommand({
+          uid: actor.uid, side: 'player', action: 'skill', moveName: move.name,
+        });
+      } else {
+        pickRealmTarget(actor, { action: 'skill', moveName: move.name });
+      }
+    });
+    box.appendChild(b);
+  }
+}
+
+function pickRealmTarget(actor, partial) {
+  realmFormation.phase = 'target';
+  $('formation-commands').classList.add('hidden');
+  $('formation-skill-list').classList.add('hidden');
+  const box = $('formation-target-list');
+  box.classList.remove('hidden');
+  box.innerHTML = '';
+  $('formation-prompt').textContent = '选择目标';
+  for (const foe of livingRealmSide('foes')) {
+    const sp = SPECIES[foe.speciesId];
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = sp.name;
+    b.addEventListener('click', () => {
+      pushRealmCommand({
+        uid: actor.uid,
+        side: 'player',
+        action: partial.action,
+        moveName: partial.moveName,
+        targetUid: foe.uid,
+      });
+    });
+    box.appendChild(b);
+  }
+}
+
+function syncRealmPartyHp() {
+  for (const mon of realmFormation.players) {
+    const live = state.party.find((p) => p.uid === mon.uid);
+    if (!live) continue;
+    live.hp = mon.hp;
+    live.usedUtility = mon.usedUtility;
+    live.atkMul = mon.atkMul;
+    live.defMul = mon.defMul;
+  }
+}
+
+function awardRealmFormationXp() {
+  let evolved = false;
+  const livingUids = realmFormation.players.filter((p) => p.hp > 0).map((p) => p.uid);
+  const totalLevel = realmFormation.foes.reduce((sum, foe) => sum + (foe.level || 1), 0);
+  const dummy = {
+    level: Math.floor(totalLevel / Math.max(1, realmFormation.foes.length)),
+    boss: realmFormation.foes.some((f) => f.boss),
+  };
+  const amount = xpReward(dummy, { trainer: realmFormation.enc.kind === 'trainer' });
+  for (const uid of livingUids) {
+    const fighter = state.party.find((p) => p.uid === uid);
+    if (!fighter) continue;
+    const xpLogs = gainExperience(fighter, amount);
+    for (const line of xpLogs) appendLog(line);
+    if (xpLogs.some((line) => line.includes('进化'))) evolved = true;
+  }
+  return evolved;
+}
+
+async function runRealmFormationResolve() {
+  realmFormation.phase = 'resolving';
+  $('formation-commands').classList.add('hidden');
+  $('formation-skill-list').classList.add('hidden');
+  $('formation-target-list').classList.add('hidden');
+  $('formation-prompt').textContent = '回合结算中…';
+
+  const foeCmds = chooseFoeFormationCommands(realmFormation.players, realmFormation.foes);
+  const turn = resolveFormationRound({
+    players: realmFormation.players,
+    foes: realmFormation.foes,
+    commands: [...realmFormation.playerCommands, ...foeCmds],
+  });
+  realmFormation.players = turn.players;
+  realmFormation.foes = turn.foes;
+  syncRealmPartyHp();
+  save();
+
+  for (const line of turn.logs) appendLog(line.text);
+  renderRealmFormationStage();
+
+  if (turn.result === 'ongoing') {
+    beginRealmCommandPhase();
+    return;
+  }
+
+  if (turn.result === 'win') {
+    appendLog('胜利！');
+    const evolved = awardRealmFormationXp();
+    const lead = realmFormation.players.find((p) => p.hp > 0) || realmFormation.players[0];
+    pendingEncounter.activeFoe = { ...realmFormation.foes[0] };
+    battle = {
+      player: lead,
+      foe: realmFormation.foes[0],
+      playerUid: lead.uid,
+      allies: null,
+      dual: false,
+      formation: false,
+      realmFormation: true,
+    };
+    finishBattleWin(evolved);
+    return;
+  }
+
+  appendLog(turn.result === 'draw' ? '同归于尽…你败北了。' : '你败北了…');
+  setTimeout(() => leaveBattle(), 900);
+}
+
 function leaveBattle({ wipeMaze = true } = {}) {
   closeItemPanel();
   battle = null;
+  realmFormation = null;
   battleBusy = false;
   continueResolver = null;
   for (const p of state.party) p.hp = p.maxHp;
@@ -3354,6 +3682,7 @@ function finishBattleWin(evolved) {
   for (const p of state.party) p.hp = p.maxHp;
   save();
   setTimeout(() => {
+    realmFormation = null;
     if (enc.formation) beginNetherCatchQueue();
     else if (enc.kind === 'trainer' || enc.dual) openCatchPick();
     else enterCatch(enc);
@@ -3751,6 +4080,32 @@ $('items-modal')?.addEventListener('click', (e) => {
 $('btn-flee-battle').addEventListener('click', () => {
   if (battleBusy || continueResolver) return;
   closeItemPanel();
+  leaveBattle({ wipeMaze: false });
+});
+$('formation-commands')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-cmd]');
+  if (!btn || !realmFormation || realmFormation.phase !== 'command') return;
+  const actor = currentRealmActor();
+  if (!actor) return;
+  const cmd = btn.dataset.cmd;
+  if (cmd === 'defend') {
+    pushRealmCommand({ uid: actor.uid, side: 'player', action: 'defend' });
+    return;
+  }
+  if (cmd === 'attack') {
+    pickRealmTarget(actor, { action: 'attack' });
+    return;
+  }
+  if (cmd === 'skill') {
+    openRealmSkills(actor);
+    return;
+  }
+  if (cmd === 'item') {
+    $('formation-prompt').textContent = '编队战道具暂未开放';
+  }
+});
+$('btn-flee-formation')?.addEventListener('click', () => {
+  if (!realmFormation || realmFormation.enc.kind === 'trainer') return;
   leaveBattle({ wipeMaze: false });
 });
 $('btn-skip-catch').addEventListener('click', skipCatch);

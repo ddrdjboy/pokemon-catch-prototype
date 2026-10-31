@@ -65,6 +65,7 @@ import {
   resolveFormationTurn,
   legalFormationTargets,
 } from './battle.js';
+import { moveIsRanged } from './move-range.js';
 import {
   hasFighterFrames,
   normalizeBattleAnim,
@@ -364,17 +365,27 @@ function formationPlayerMove() {
   return SPECIES[battle.player.speciesId]?.move || null;
 }
 
+function formationMeleeLegal() {
+  return legalFormationTargets(battle.foes, { ranged: false });
+}
+
+function formationLiving() {
+  return legalFormationTargets(battle.foes, { ranged: true });
+}
+
 function ensureFormationTarget() {
   if (!battle?.formation || !battle.foes) return;
-  // Front-row gate: back is only legal once no front foes remain.
-  const legal = legalFormationTargets(battle.foes, { pierce: false });
-  if (!legal.length) {
+  const legal = formationMeleeLegal();
+  const living = formationLiving();
+  if (!living.length) {
     battle.selectedTarget = -1;
     return;
   }
   const cur = battle.foes[battle.selectedTarget];
-  if (cur && legal.includes(cur)) return;
-  battle.selectedTarget = battle.foes.indexOf(legal[0]);
+  // Keep aim even on melee-blocked back (ranged can still hit); only fix dead/missing.
+  if (cur && cur.hp > 0) return;
+  const prefer = legal[0] || living[0];
+  battle.selectedTarget = battle.foes.indexOf(prefer);
 }
 
 function updateItemButton() {
@@ -2151,7 +2162,7 @@ function renderFormationField() {
   back.innerHTML = '';
   front.innerHTML = '';
 
-  const frontUp = battle.foes.some((f) => f.hp > 0 && f.row === 'front');
+  const meleeOk = new Set(formationMeleeLegal());
 
   battle.foes.forEach((mon, index) => {
     const chip = document.createElement('button');
@@ -2168,11 +2179,12 @@ function renderFormationField() {
       return;
     }
     const sp = SPECIES[mon.speciesId];
-    const selected = index === battle.selectedTarget && !(mon.row === 'back' && frontUp);
+    const selected = index === battle.selectedTarget && mon.hp > 0;
     chip.className = [
       'formation-chip',
       mon.boss ? 'boss' : '',
       selected ? 'selected' : '',
+      !meleeOk.has(mon) ? 'melee-blocked' : '',
     ].filter(Boolean).join(' ');
     const pct = formationChipHp(mon);
     chip.innerHTML = `
@@ -2183,12 +2195,9 @@ function renderFormationField() {
       </div>
     `;
     chip.addEventListener('click', () => {
-      // Live check — do not close over render-time frontUp.
-      const frontStillUp = battle.foes.some((f) => f.hp > 0 && f.row === 'front');
-      if (mon.row === 'back' && frontStillUp) {
-        const n = battle.foes.filter((f) => f.hp > 0 && f.row === 'front').length;
-        showAppToast(`前排还有 ${n} 只敌人，无法选中后排`);
-        return;
+      if (mon.hp <= 0) return;
+      if (!meleeOk.has(mon)) {
+        showAppToast('同列前排挡住后排（近战不可选；远程可穿）');
       }
       battle.selectedTarget = index;
       battle.foe = battle.foes[index];
@@ -2753,6 +2762,12 @@ async function onPickMove(move) {
     // Formation must use full-field resolve — 1v1 / squad vs battle.foe would
     // declare win as soon as the aimed chip falls.
     if (battle.formation) {
+      const legal = legalFormationTargets(battle.foes, { ranged: moveIsRanged(move) });
+      const cur = battle.foes[battle.selectedTarget];
+      if (!cur || !legal.includes(cur)) {
+        const prefer = legal.find((t) => t.col === cur?.col) || legal[0];
+        battle.selectedTarget = prefer ? battle.foes.indexOf(prefer) : -1;
+      }
       const turn = resolveFormationTurn(battle.player, battle.allies || [], battle.foes, {
         playerTargetIndex: battle.selectedTarget,
         playerMove: move,

@@ -978,16 +978,16 @@ export function rollEncounter(tmpl, {
   shinyRate = SHINY_RATE_WITH_CHARM,
 } = {}) {
   if (tmpl.formation && tmpl.front && tmpl.back) {
-    const make = (slot, row) => {
+    const make = (slot, row, col) => {
       const isBoss = !!slot.boss;
       const mon = createPokemon(slot.speciesId, slot.level, {
         shiny: isBoss,
         boss: isBoss,
       });
-      return { ...mon, row };
+      return { ...mon, row, col };
     };
-    const front = tmpl.front.map((s) => make(s, 'front'));
-    const back = tmpl.back.map((s) => make(s, 'back'));
+    const front = tmpl.front.map((s, i) => make(s, 'front', i));
+    const back = tmpl.back.map((s, i) => make(s, 'back', i));
     const foes = [...front, ...back];
     const lead = foes.find((f) => f.boss) || foes[0];
     return {
@@ -1063,6 +1063,7 @@ export function syncEncounters(saved, maps, roll) {
         // Re-roll when shape OR boss levels/species drift (e.g. 200 → 250/300).
         const ready = prev?.formation
           && prev.foes?.length === 10
+          && prev.foes.every((f) => Number.isInteger(f.col))
           && prevBosses.length === bossSlots.length
           && prevBosses.every((f, i) => (
             f.speciesId === bossSlots[i].speciesId

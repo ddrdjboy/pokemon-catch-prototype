@@ -494,6 +494,12 @@ assert(formation.formation && formation.foes.length === 10, 'formation rolls 10 
 assert(formation.foes.filter((f) => f.row === 'front').length === 5, '5 front');
 assert(formation.foes.filter((f) => f.row === 'back').length === 5, '5 back');
 assert(formation.foes.filter((f) => f.boss).length === 3, '3 bosses');
+assert(formation.foes.every((f) => Number.isInteger(f.col) && f.col >= 0 && f.col <= 4), 'each foe has col 0-4');
+const byCol = (row, col) => formation.foes.find((f) => f.row === row && f.col === col);
+assert(byCol('front', 2) && byCol('back', 2), 'col2 has front and back');
+for (let i = 0; i < 5; i += 1) {
+  assert(byCol('front', i).col === i && byCol('back', i).col === i, `aligned col ${i}`);
+}
 const allies4 = createGhostNetherAllies(() => 0.1);
 assert(allies4.length === 4 && new Set(allies4.map((a) => a.speciesId)).size === 4, '4 distinct allies');
 
